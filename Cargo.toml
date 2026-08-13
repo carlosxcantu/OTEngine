@@ -3,8 +3,17 @@ name = "OTEngine"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+# [dependencies]
 
-[[bin]]
-name = "OTEngine"
-path = "main.rs"
+# [[bin]]
+# name = "OTEngine"
+# path = "main.rs"
+
+[lib]
+# This tells Cargo to compile your engine as a dynamic library for WebAssembly, 
+# as well as a standard Rust library so your local binary can use it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# This is the crucial bridge that lets your Rust code talk to JavaScript/Web browsers.
+wasm-bindgen = "0.2"
