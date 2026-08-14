@@ -6,11 +6,11 @@ pub struct Move
 impl Move
 {
     // Constructor to pack it
-    pub fn new(start: u32, target: u32, flags: u32, piece: u32) -> Self 
+    pub fn new(start: u32, target: u32, flags: u32, piece: u32, captured_piece: u32) -> Self 
     {
         Move 
         {
-            data: start | (target << 6) | (flags << 12) | (piece << 16),
+            data: start | (target << 6) | (flags << 12) | (piece << 16) | (captured_piece << 20),
         }
     }
 
@@ -33,5 +33,10 @@ impl Move
     pub fn get_piece(&self) -> usize 
     {
         ((self.data >> 16) & 0xF) as usize
+    }
+
+    pub fn get_captured_piece(&self) -> usize 
+    {
+        ((self.data >> 20) & 0xF) as usize
     }
 }

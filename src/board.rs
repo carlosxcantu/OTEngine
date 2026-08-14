@@ -52,10 +52,6 @@ impl Board
             {
                 self.bitboards_of_pieces[WHITE_PIECES] &= !target_mask;
             }
-
-            //Updates Array of Pieces 
-            self.array_of_pieces[move_data.get_start() as usize] = EMPTY_SQUARE;
-            self.array_of_pieces[move_data.get_target() as usize] = move_data.get_piece() as u8;
         }
         //Creates a u64 BitMask that contains the start square and target square
         let move_mask: u64 = (1u64 << move_data.get_start()) | (1u64 << move_data.get_target());
@@ -69,13 +65,58 @@ impl Board
         //Applies the bitmask on the respective bitboard
         self.bitboards_of_pieces[color_index] ^= move_mask;
 
+        //Updates Array of Pieces 
+        self.array_of_pieces[move_data.get_start() as usize] = EMPTY_SQUARE;
+        self.array_of_pieces[move_data.get_target() as usize] = move_data.get_piece() as u8;
+
         //Relinquishes turn
         self.turn_end();
     }
 
     pub fn unmake_move(&mut self, move_data: &Move)
     {
+        //Relinquishes turn
+        self.turn_end();
+
+        //Creates a u64 BitMask that contains the start square and target square
+        let move_mask: u64 = (1u64 << move_data.get_target()) | (1u64 << move_data.get_start());
+
+        //Applies the bitmask on the respective bitboard
+        self.bitboards_of_pieces[move_data.get_piece()] ^= move_mask;
+
+        //Determines which color Bitboard to modify
+        let color_index = if self.is_white_turn() {WHITE_PIECES} else {BLACK_PIECES};
+
+        //Applies the bitmask on the respective bitboard
+        self.bitboards_of_pieces[color_index] ^= move_mask;
+
+        //Updates Array of Pieces 
+        self.array_of_pieces[move_data.get_start() as usize] = move_data.get_piece() as u8;
+        self.array_of_pieces[move_data.get_target() as usize] = EMPTY_SQUARE;
         
+        // capture detector
+        if move_data.get_captured_piece() as u8 != EMPTY_SQUARE
+        {
+            // Creats a u64 Bitmask of the target square
+            let target_mask: u64 = 1u64 << move_data.get_target();
+
+            // Applies the Bitmask onto the respective Bitboard
+            self.bitboards_of_pieces[move_data.get_captured_piece() as usize] |= target_mask;
+
+            // Applies the Bitmask to the bitboard of the captured color 
+            if self.is_white_turn()
+            {
+                self.bitboards_of_pieces[BLACK_PIECES] |= target_mask;
+            }
+            else
+            {
+                self.bitboards_of_pieces[WHITE_PIECES] |= target_mask;
+            }
+
+            //Updates Array of Pieces
+            self.array_of_pieces[move_data.get_target() as usize] = move_data.get_captured_piece() as u8;
+        }
+
     }
 
     pub fn is_white_turn(&self) -> bool
