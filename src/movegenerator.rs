@@ -149,7 +149,23 @@ pub fn generate_pawn_moves(board: &Board, move_list: &mut MoveList, empty_square
 
 pub fn generate_knight_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64)
 {
+    let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
+    let mut knight_bitboard = board.get_bitboard(board::KNIGHTS) & board.get_bitboard(current_color);
 
+    while knight_bitboard != 0 
+    {
+        let start_square = knight_bitboard.trailing_zeros();
+        let mut current_knight_bitboard = KNIGHT_ATTACK_MAP[start_square as usize];
+        current_knight_bitboard &= !board.get_bitboard(current_color);
+        while current_knight_bitboard != 0
+        {
+            let target_square = current_knight_bitboard.trailing_zeros();
+            let the_move: Move = Move::new(start_square, target_square, 0, board::KNIGHTS as u32, board.get_piece_from_array(target_square));
+            move_list.add_move(the_move);
+            current_knight_bitboard &= current_knight_bitboard - 1;
+        }
+        knight_bitboard &= knight_bitboard - 1;
+    }
 }
 
 pub fn generate_king_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64)
@@ -203,17 +219,21 @@ const fn calculate_knight_attack_map() -> [u64; 64]
 
     while current_square < 64
     {
+        // Creates respective bitboards
         let current_square_bitboard: u64 = 1u64 << current_square;
         let mut attack_bitboard: u64 = 0u64;
 
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
-        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        // Applies Bitmask to attack Bitboard for all 8 directions
+        attack_bitboard |= (current_square_bitboard & ZERO_H_FILE) << 17; //NE
+        attack_bitboard |= (current_square_bitboard & ZERO_H_FILE & ZERO_G_FILE) << 10; //NE
+        attack_bitboard |= (current_square_bitboard & ZERO_H_FILE & ZERO_G_FILE) >> 6; //SE
+        attack_bitboard |= (current_square_bitboard & ZERO_H_FILE) >> 15; //SE
+        attack_bitboard |= (current_square_bitboard & ZERO_A_FILE) >> 17; //SW
+        attack_bitboard |= (current_square_bitboard & ZERO_A_FILE & ZERO_B_FILE) >> 10; //SW
+        attack_bitboard |= (current_square_bitboard & ZERO_A_FILE & ZERO_B_FILE) << 6; //NW
+        attack_bitboard |= (current_square_bitboard & ZERO_A_FILE) << 15; //NW
+
+        // Sets respective square to the repsective bitmask
         attack_map[current_square] = attack_bitboard;
         current_square += 1;
     }
