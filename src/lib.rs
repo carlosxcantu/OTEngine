@@ -3,3 +3,4 @@ mod pieces;
 mod engine;
 mod movedata;
 mod movegenerator;
+mod constants;

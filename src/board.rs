@@ -12,6 +12,16 @@ pub const WHITE_PIECES: usize = 6;
 pub const BLACK_PIECES: usize = 7;
 pub const EMPTY_SQUARE: u8 = 8;
 
+pub const FLAG_NONE: u32 = 0;          
+pub const FLAG_DOUBLE_PUSH: u32 = 1;   
+pub const FLAG_KING_CASTLE: u32 = 2;   
+pub const FLAG_QUEEN_CASTLE: u32 = 3; 
+pub const FLAG_EN_PASSANT: u32 = 4;  
+pub const FLAG_PROMOTE_QUEEN: u32 = 5; 
+pub const FLAG_PROMOTE_ROOK: u32 = 6; 
+pub const FLAG_PROMOTE_BISHOP: u32 = 7;
+pub const FLAG_PROMOTE_KNIGHT: u32 = 8;
+
 //Chess Board represented as a Struct of Bitboards
 pub struct Board
 {
