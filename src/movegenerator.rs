@@ -2,13 +2,33 @@
 use crate::movedata::Move;
 use crate::board::{self, BLACK_PIECES, Board, PAWNS, WHITE_PIECES};
 
-const RANK_3 : u64 = 0x0000000000FF0000;
-const RANK_6 : u64 = 0x0000FF0000000000;
-const ZERO_A_FILE: u64 = 0xFEFEFEFEFEFEFEFE;
-const ZERO_H_FILE: u64 = 0x7F7F7F7F7F7F7F7F;
 
 //Constants
-
+const RANK_1: u64 = 0x00000000000000FF;
+const RANK_2: u64 = 0x000000000000FF00;
+const RANK_3: u64 = 0x0000000000FF0000;
+const RANK_4: u64 = 0x00000000FF000000;
+const RANK_5: u64 = 0x000000FF00000000;
+const RANK_6: u64 = 0x0000FF0000000000;
+const RANK_7: u64 = 0x00FF000000000000;
+const RANK_8: u64 = 0xFF00000000000000;
+const ZERO_A_FILE: u64 = 0xFEFEFEFEFEFEFEFE;
+const ZERO_B_FILE: u64 = 0xFDFDFDFDFDFDFDFD;
+const ZERO_C_FILE: u64 = 0xFBFBFBFBFBFBFBFB;
+const ZERO_D_FILE: u64 = 0xF7F7F7F7F7F7F7F7;
+const ZERO_E_FILE: u64 = 0xEFEFEFEFEFEFEFEF;
+const ZERO_F_FILE: u64 = 0xDFDFDFDFDFDFDFDF;
+const ZERO_G_FILE: u64 = 0xBFBFBFBFBFBFBFBF;
+const ZERO_H_FILE: u64 = 0x7F7F7F7F7F7F7F7F;
+const FILE_A: u64 = 0x0101010101010101;
+const FILE_B: u64 = 0x0202020202020202;
+const FILE_C: u64 = 0x0404040404040404;
+const FILE_D: u64 = 0x0808080808080808;
+const FILE_E: u64 = 0x1010101010101010;
+const FILE_F: u64 = 0x2020202020202020;
+const FILE_G: u64 = 0x4040404040404040;
+const FILE_H: u64 = 0x8080808080808080;
+const KNIGHT_ATTACK_MAP: [u64; 64] = calculate_knight_attack_map();
 
 pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList)
 {
@@ -174,4 +194,28 @@ impl MoveList
         self.move_list[self.count] = move_data;
         self.count += 1;
     }
+}
+
+const fn calculate_knight_attack_map() -> [u64; 64]
+{
+    let mut attack_map: [u64; 64] = [0u64; 64];
+    let mut current_square: usize = 0;
+
+    while current_square < 64
+    {
+        let current_square_bitboard: u64 = 1u64 << current_square;
+        let mut attack_bitboard: u64 = 0u64;
+
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_bitboard |= ((current_square_bitboard & ZERO_H_FILE & !RANK_7 & !RANK_8) & (1u64 << 17));
+        attack_map[current_square] = attack_bitboard;
+        current_square += 1;
+    }
+    attack_map
 }
