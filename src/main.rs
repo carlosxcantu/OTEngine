@@ -4,7 +4,8 @@ mod engine;
 mod movedata;
 mod movegenerator;
 mod constants;
-use crate::movegenerator::{calculate_bishop_mask, find_magic_number};
+mod magics;
+use crate::magics::{calculate_bishop_mask, find_magic_number};
 
 fn main() {
     println!("pub const BISHOP_MAGICS: [u64; 64] = [");
