@@ -5,19 +5,14 @@ mod movedata;
 mod movegenerator;
 mod constants;
 mod magics;
-use crate::magics::{calculate_bishop_mask, find_magic_number};
+use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask, find_magic_number}, movegenerator::{MoveList, generate_psuedo_legal_moves}};
 
-fn main() {
-    println!("pub const BISHOP_MAGICS: [u64; 64] = [");
-    for square in 0usize..64 {
-        // 1. Swap to the Bishop mask
-        let mask = calculate_bishop_mask(square);
-        let bit_count = mask.count_ones();
-        
-        // 2. Set the is_bishop flag to true
-        let magic = find_magic_number(square, bit_count, true);
-        
-        println!("    0x{:016x}, // Square {}", magic, square);
-    }
-    println!("];");
+fn main() 
+{
+    let magic_bitboards = MagicBitBoards::new();
+
+    let mut board = Board::new();
+    let mut move_list = MoveList::new();
+    
+    generate_psuedo_legal_moves(&board, &mut move_list, &magic_bitboards);
 }

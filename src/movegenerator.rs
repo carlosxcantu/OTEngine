@@ -1,9 +1,10 @@
+use crate::magics::MagicBitBoards;
 // Modules
 use crate::movedata::Move;
 use crate::board::{self, Board};
-use crate::constants::*;
+use crate::{constants::*, magics};
 
-pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList)
+pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList, magic_bitboards: &MagicBitBoards)
 {
     let occupied_squares: u64 = board.get_bitboard(board::WHITE_PIECES) | board.get_bitboard(board::BLACK_PIECES);
     let empty_squares: u64 = !occupied_squares;
@@ -11,9 +12,9 @@ pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList)
     generate_pawn_moves(board, move_list, empty_squares);
     generate_knight_moves(board, move_list, empty_squares);
     generate_king_moves(board, move_list, empty_squares);
-    generate_bishop_moves(board, move_list, empty_squares, occupied_squares);
-    generate_rook_moves(board, move_list, empty_squares, occupied_squares);
-    generate_queen_moves(board, move_list, empty_squares, occupied_squares);
+    generate_bishop_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
+    generate_rook_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
+    generate_queen_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
 }
 
 pub fn generate_pawn_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64)
@@ -162,22 +163,70 @@ pub fn generate_king_moves(board: &Board, move_list: &mut MoveList, empty_square
     }
 }
 
-pub fn generate_bishop_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64)
+pub fn generate_rook_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
+    let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
+    let mut rook_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(current_color);
 
+    while rook_bitboard != 0 
+    {
+        let start_square = rook_bitboard.trailing_zeros();
+        let mut current_rook_bitboard = magic_bitboards.get_rook_attacks(start_square as usize, occupied_squares);
+        current_rook_bitboard &= !board.get_bitboard(current_color);
+        while current_rook_bitboard != 0
+        {
+            let target_square = current_rook_bitboard.trailing_zeros();
+            let the_move: Move = Move::new(start_square, target_square, 0, board::ROOKS as u32, board.get_piece_from_array(target_square));
+            move_list.add_move(the_move);
+            current_rook_bitboard &= current_rook_bitboard - 1;
+        }
+        rook_bitboard &= rook_bitboard - 1;
+    }
 }
 
-pub fn generate_rook_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64)
+pub fn generate_bishop_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
-    
+    let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
+    let mut bishop_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(current_color);
+
+    while bishop_bitboard != 0 
+    {
+        let start_square = bishop_bitboard.trailing_zeros();
+        let mut current_bishop_bitboard = magic_bitboards.get_bishop_attacks(start_square as usize, occupied_squares);
+        current_bishop_bitboard &= !board.get_bitboard(current_color);
+        while current_bishop_bitboard != 0
+        {
+            let target_square = current_bishop_bitboard.trailing_zeros();
+            let the_move: Move = Move::new(start_square, target_square, 0, board::BISHOPS as u32, board.get_piece_from_array(target_square));
+            move_list.add_move(the_move);
+            current_bishop_bitboard &= current_bishop_bitboard - 1;
+        }
+        bishop_bitboard &= bishop_bitboard - 1;
+    }
 }
 
-pub fn generate_queen_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64)
+pub fn generate_queen_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
-    
+    let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
+    let mut queen_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(current_color);
+
+    while queen_bitboard != 0 
+    {
+        let start_square = queen_bitboard.trailing_zeros();
+        let mut current_queen_bitboard = magic_bitboards.get_bishop_attacks(start_square as usize, occupied_squares) | magic_bitboards.get_rook_attacks(start_square as usize, occupied_squares);
+        current_queen_bitboard &= !board.get_bitboard(current_color);
+        while current_queen_bitboard != 0
+        {
+            let target_square = current_queen_bitboard.trailing_zeros();
+            let the_move: Move = Move::new(start_square, target_square, 0, board::QUEENS as u32, board.get_piece_from_array(target_square));
+            move_list.add_move(the_move);
+            current_queen_bitboard &= current_queen_bitboard - 1;
+        }
+        queen_bitboard &= queen_bitboard - 1;
+    }
 }
 
-pub fn is_square_attacked(square: usize, board: &Board) -> bool
+pub fn is_square_attacked(square: usize, occupied_squares: u64, board: &Board, magic_bitboards: &MagicBitBoards) -> bool
 {
     let enemy_color: usize = if board.is_white_turn() {board::BLACK_PIECES} else {board::WHITE_PIECES};
 
@@ -216,6 +265,25 @@ pub fn is_square_attacked(square: usize, board: &Board) -> bool
             return true;
         }
     }
+
+    current_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(enemy_color);
+    if current_bitboard & magic_bitboards.get_rook_attacks(square, occupied_squares) > 0
+    {
+        return true;
+    }
+
+    current_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(enemy_color);
+    if current_bitboard & magic_bitboards.get_bishop_attacks(square, occupied_squares) > 0
+    {
+        return true;
+    }
+
+    current_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(enemy_color);
+    if current_bitboard & (magic_bitboards.get_bishop_attacks(square, occupied_squares) | magic_bitboards.get_rook_attacks(square, occupied_squares)) > 0
+    {
+        return true;
+    }
+
     false
 }
 
