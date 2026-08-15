@@ -1,3 +1,4 @@
+#[derive(Copy, Clone)]
 pub struct Move
 {
     data: u32,

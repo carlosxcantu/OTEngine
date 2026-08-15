@@ -1,17 +1,16 @@
 //Modules
-use crate::movegen::Move;
-
+use crate::movedata::Move;
 
 // Array Index for respective BitBoard
-const PAWNS: usize = 0;
-const KNIGHTS: usize = 1;
-const BISHOPS: usize = 2;
-const ROOKS: usize = 3;
-const QUEENS: usize = 4;
-const KINGS: usize = 5;
-const WHITE_PIECES: usize = 6;
-const BLACK_PIECES: usize = 7;
-const EMPTY_SQUARE: u8 = 8;
+pub const PAWNS: usize = 0;
+pub const KNIGHTS: usize = 1;
+pub const BISHOPS: usize = 2;
+pub const ROOKS: usize = 3;
+pub const QUEENS: usize = 4;
+pub const KINGS: usize = 5;
+pub const WHITE_PIECES: usize = 6;
+pub const BLACK_PIECES: usize = 7;
+pub const EMPTY_SQUARE: u8 = 8;
 
 //Chess Board represented as a Struct of Bitboards
 pub struct Board
@@ -32,6 +31,64 @@ pub struct Board
 
 impl Board
 {
+    pub fn new() -> Self {
+
+        // 1. Initialize an empty array
+        let mut starting_array: [u8; 64] = [EMPTY_SQUARE; 64];
+
+        // 2. Set up the starting positions in the array
+        // White Pieces
+        starting_array[0] = ROOKS as u8;   // A1
+        starting_array[1] = KNIGHTS as u8; // B1
+        starting_array[2] = BISHOPS as u8; // C1
+        starting_array[3] = QUEENS as u8;  // D1
+        starting_array[4] = KINGS as u8;   // E1
+        starting_array[5] = BISHOPS as u8; // F1
+        starting_array[6] = KNIGHTS as u8; // G1
+        starting_array[7] = ROOKS as u8;   // H1
+
+        for i in 8..16 
+        {
+            starting_array[i] = PAWNS as u8; // Rank 2
+        }
+
+        // Black Pieces
+        starting_array[56] = ROOKS as u8;   // A8
+        starting_array[57] = KNIGHTS as u8; // B8
+        starting_array[58] = BISHOPS as u8; // C8
+        starting_array[59] = QUEENS as u8;  // D8
+        starting_array[60] = KINGS as u8;   // E8
+        starting_array[61] = BISHOPS as u8; // F8
+        starting_array[62] = KNIGHTS as u8; // G8
+        starting_array[63] = ROOKS as u8;   // H8
+        for i in 48..56 {
+            starting_array[i] = PAWNS as u8; // Rank 7
+        }
+
+        // 3. Construct the bitboards using standard starting hex values
+        let starting_bitboards: [u64; 8] = 
+        [
+            0x00FF00000000FF00, // PAWNS: Rank 2 and 7
+            0x4200000000000042, // KNIGHTS: B1, G1, B8, G8
+            0x2400000000000024, // BISHOPS: C1, F1, C8, F8
+            0x8100000000000081, // ROOKS: A1, H1, A8, H8
+            0x0800000000000008, // QUEENS: D1, D8
+            0x1000000000000010, // KINGS: E1, E8
+            0x000000000000FFFF, // WHITE_PIECES: Rank 1 and 2
+            0xFFFF000000000000, // BLACK_PIECES: Rank 7 and 8
+        ];
+
+        // 4. Return the fully instantiated struct
+        Self 
+        {
+            bitboards_of_pieces: starting_bitboards,
+            array_of_pieces: starting_array,
+            white_to_move: true,        // White always moves first
+            castling_rights: 15,        // 15 is binary 1111 (All 4 castling rights available)
+            en_passant_target: 0,       // No en passant target on turn 1
+        }
+    }
+
     pub fn make_move(&mut self, move_data: &Move)
     {
         // capture detector
@@ -127,5 +184,15 @@ impl Board
     pub fn turn_end(&mut self)
     {
         self.white_to_move = !self.white_to_move;
+    }
+
+    pub fn get_bitboard(&self, bitboard: usize) -> u64
+    {
+        self.bitboards_of_pieces[bitboard]
+    }
+
+    pub fn get_piece_from_array(&self, target_square: u32) -> u32
+    {
+        self.array_of_pieces[target_square as usize] as u32
     }
 }
