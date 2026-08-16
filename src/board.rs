@@ -1,5 +1,5 @@
 //Modules
-use crate::movedata::Move;
+use crate::{constants::{self, CASTLING_RIGHTS_UPDATE_TABLE}, movedata::Move};
 
 // Array Index for respective BitBoard
 pub const PAWNS: usize = 0;
@@ -25,28 +25,21 @@ pub const FLAG_PROMOTE_KNIGHT: u32 = 8;
 //Chess Board represented as a Struct of Bitboards
 pub struct Board
 {
-    //Array of BitBoards
     bitboards_of_pieces: [u64; 8],
-
-    //Array of Pieces positions
     array_of_pieces: [u8; 64],
-
-    //Current turn
     white_to_move: bool,
-
-    //BitBoards for Move Generation
     castling_rights: u8, // A 4-bit flag to track who can castle
     en_passant_target: u64, // The square a pawn just skipped over
+    history: Vec<GameState>
 }
 
 impl Board
 {
-    pub fn new() -> Self {
-
-        // 1. Initialize an empty array
+    pub fn new() -> Self 
+    {
         let mut starting_array: [u8; 64] = [EMPTY_SQUARE; 64];
 
-        // 2. Set up the starting positions in the array
+        // Starting Position
         // White Pieces
         starting_array[0] = ROOKS as u8;   // A1
         starting_array[1] = KNIGHTS as u8; // B1
@@ -75,7 +68,6 @@ impl Board
             starting_array[i] = PAWNS as u8; // Rank 7
         }
 
-        // 3. Construct the bitboards using standard starting hex values
         let starting_bitboards: [u64; 8] = 
         [
             0x00FF00000000FF00, // PAWNS: Rank 2 and 7
@@ -88,7 +80,6 @@ impl Board
             0xFFFF000000000000, // BLACK_PIECES: Rank 7 and 8
         ];
 
-        // 4. Return the fully instantiated struct
         Self 
         {
             bitboards_of_pieces: starting_bitboards,
@@ -96,21 +87,27 @@ impl Board
             white_to_move: true,        // White always moves first
             castling_rights: 15,        // 15 is binary 1111 (All 4 castling rights available)
             en_passant_target: 0,       // No en passant target on turn 1
+            history: Vec::with_capacity(512)
         }
     }
 
     pub fn make_move(&mut self, move_data: &Move)
     {
-        // capture detector
+        self.history.push(GameState
+        {
+            castling_rights: self.castling_rights,
+            en_passant_target: self.en_passant_target,
+        });
+
+        self.update_en_passant_target(move_data);
+        self.update_castling_rights(move_data);
+
+        // Capture Detector
         if self.array_of_pieces[move_data.get_target() as usize] != EMPTY_SQUARE
         {
-            // Creats a u64 Bitmask of the target square
             let target_mask: u64 = 1u64 << move_data.get_target();
-
-            // Applies the Bitmask onto the respective Bitboard
             self.bitboards_of_pieces[self.array_of_pieces[move_data.get_target() as usize] as usize] &= !target_mask;
 
-            // Applies the Bitmask to the bitboard of the captured color 
             if self.is_white_turn()
             {
                 self.bitboards_of_pieces[BLACK_PIECES] &= !target_mask;
@@ -120,70 +117,165 @@ impl Board
                 self.bitboards_of_pieces[WHITE_PIECES] &= !target_mask;
             }
         }
-        //Creates a u64 BitMask that contains the start square and target square
+
         let move_mask: u64 = (1u64 << move_data.get_start()) | (1u64 << move_data.get_target());
-
-        //Applies the bitmask on the respective bitboard
         self.bitboards_of_pieces[move_data.get_piece()] ^= move_mask;
-
-        //Determines which color Bitboard to modify
         let color_index = if self.is_white_turn() {WHITE_PIECES} else {BLACK_PIECES};
-
-        //Applies the bitmask on the respective bitboard
         self.bitboards_of_pieces[color_index] ^= move_mask;
-
-        //Updates Array of Pieces 
         self.array_of_pieces[move_data.get_start() as usize] = EMPTY_SQUARE;
         self.array_of_pieces[move_data.get_target() as usize] = move_data.get_piece() as u8;
+        let flag = move_data.get_flags();
 
-        //Relinquishes turn
+        //Flags for Special Moves
+        if flag >= FLAG_PROMOTE_QUEEN && flag <= FLAG_PROMOTE_KNIGHT 
+        {
+            let target_square = move_data.get_target() as usize;
+            let target_mask = 1u64 << target_square;
+            self.bitboards_of_pieces[PAWNS] &= !target_mask;
+
+            let promoted_piece = match flag 
+            {
+                FLAG_PROMOTE_QUEEN => QUEENS,
+                FLAG_PROMOTE_ROOK => ROOKS,
+                FLAG_PROMOTE_BISHOP => BISHOPS,
+                FLAG_PROMOTE_KNIGHT => KNIGHTS,
+                _ => unreachable!(),
+            };
+
+            self.bitboards_of_pieces[promoted_piece] |= target_mask;
+            self.array_of_pieces[target_square] = promoted_piece as u8;
+        }
+
+        if flag == FLAG_EN_PASSANT 
+        {
+            let target_square = move_data.get_target() as usize;
+            let captured_square = if self.is_white_turn() { target_square - 8 } else { target_square + 8 };
+            let captured_mask = 1u64 << captured_square;
+            self.bitboards_of_pieces[PAWNS] &= !captured_mask;
+
+            if self.is_white_turn() 
+            {
+                self.bitboards_of_pieces[BLACK_PIECES] &= !captured_mask;
+            } 
+            else 
+            {
+                self.bitboards_of_pieces[WHITE_PIECES] &= !captured_mask;
+            }
+
+            self.array_of_pieces[captured_square] = EMPTY_SQUARE;
+        }
+
+        if flag == FLAG_KING_CASTLE || flag == FLAG_QUEEN_CASTLE 
+        {
+            let target_square = move_data.get_target() as usize;
+            let (rook_start, rook_target) = if flag == FLAG_KING_CASTLE 
+            {
+                (target_square + 1, target_square - 1)
+            } 
+            else 
+            {
+                (target_square - 2, target_square + 1)
+            };
+
+            let rook_mask = (1u64 << rook_start) | (1u64 << rook_target);
+            self.bitboards_of_pieces[ROOKS] ^= rook_mask;
+
+            if self.is_white_turn() 
+            {
+                self.bitboards_of_pieces[WHITE_PIECES] ^= rook_mask;
+            } 
+            else 
+            {
+                self.bitboards_of_pieces[BLACK_PIECES] ^= rook_mask;
+            }
+
+            self.array_of_pieces[rook_start] = EMPTY_SQUARE;
+            self.array_of_pieces[rook_target] = ROOKS as u8;
+        }
+
         self.turn_end();
     }
 
     pub fn unmake_move(&mut self, move_data: &Move)
     {
-        //Relinquishes turn
         self.turn_end();
 
-        //Creates a u64 BitMask that contains the start square and target square
-        let move_mask: u64 = (1u64 << move_data.get_target()) | (1u64 << move_data.get_start());
-
-        //Applies the bitmask on the respective bitboard
-        self.bitboards_of_pieces[move_data.get_piece()] ^= move_mask;
-
-        //Determines which color Bitboard to modify
-        let color_index = if self.is_white_turn() {WHITE_PIECES} else {BLACK_PIECES};
-
-        //Applies the bitmask on the respective bitboard
-        self.bitboards_of_pieces[color_index] ^= move_mask;
-
-        //Updates Array of Pieces 
-        self.array_of_pieces[move_data.get_start() as usize] = move_data.get_piece() as u8;
-        self.array_of_pieces[move_data.get_target() as usize] = EMPTY_SQUARE;
-        
-        // capture detector
-        if move_data.get_captured_piece() as u8 != EMPTY_SQUARE
+        if let Some(previous_state) = self.history.pop() 
         {
-            // Creats a u64 Bitmask of the target square
-            let target_mask: u64 = 1u64 << move_data.get_target();
-
-            // Applies the Bitmask onto the respective Bitboard
-            self.bitboards_of_pieces[move_data.get_captured_piece() as usize] |= target_mask;
-
-            // Applies the Bitmask to the bitboard of the captured color 
-            if self.is_white_turn()
-            {
-                self.bitboards_of_pieces[BLACK_PIECES] |= target_mask;
-            }
-            else
-            {
-                self.bitboards_of_pieces[WHITE_PIECES] |= target_mask;
-            }
-
-            //Updates Array of Pieces
-            self.array_of_pieces[move_data.get_target() as usize] = move_data.get_captured_piece() as u8;
+            self.castling_rights = previous_state.castling_rights;
+            self.en_passant_target = previous_state.en_passant_target;
         }
 
+        let flag = move_data.get_flags();
+        let start_square = move_data.get_start() as usize;
+        let target_square = move_data.get_target() as usize;
+        let move_mask: u64 = (1u64 << target_square) | (1u64 << start_square);
+        let color_index = if self.is_white_turn() { WHITE_PIECES } else { BLACK_PIECES };
+
+        self.bitboards_of_pieces[color_index] ^= move_mask;
+
+        if flag >= FLAG_PROMOTE_QUEEN && flag <= FLAG_PROMOTE_KNIGHT 
+        {
+            let target_mask = 1u64 << target_square;
+            let start_mask = 1u64 << start_square;
+            let promoted_piece = match flag 
+            {
+                FLAG_PROMOTE_QUEEN => QUEENS,
+                FLAG_PROMOTE_ROOK => ROOKS,
+                FLAG_PROMOTE_BISHOP => BISHOPS,
+                FLAG_PROMOTE_KNIGHT => KNIGHTS,
+                _ => unreachable!(),
+            };
+
+            self.bitboards_of_pieces[promoted_piece] &= !target_mask;
+            self.bitboards_of_pieces[PAWNS] |= start_mask;
+        } 
+        else 
+        {
+            self.bitboards_of_pieces[move_data.get_piece()] ^= move_mask;
+        }
+
+        self.array_of_pieces[start_square] = move_data.get_piece() as u8;
+        self.array_of_pieces[target_square] = EMPTY_SQUARE;
+
+        if flag == FLAG_KING_CASTLE || flag == FLAG_QUEEN_CASTLE 
+        {
+            let (rook_start, rook_target) = if flag == FLAG_KING_CASTLE 
+            {
+                (target_square + 1, target_square - 1)
+            } 
+            else 
+            {
+                (target_square - 2, target_square + 1)
+            };
+
+            let rook_mask = (1u64 << rook_start) | (1u64 << rook_target);
+            self.bitboards_of_pieces[ROOKS] ^= rook_mask;
+            self.bitboards_of_pieces[color_index] ^= rook_mask;
+
+            self.array_of_pieces[rook_target] = EMPTY_SQUARE;
+            self.array_of_pieces[rook_start] = ROOKS as u8;
+        }
+
+        if flag == FLAG_EN_PASSANT 
+        {
+            let captured_square = if self.is_white_turn() { target_square - 8 } else { target_square + 8 };
+            let captured_mask = 1u64 << captured_square;
+            let enemy_color = if self.is_white_turn() { BLACK_PIECES } else { WHITE_PIECES };
+
+            self.bitboards_of_pieces[PAWNS] |= captured_mask;
+            self.bitboards_of_pieces[enemy_color] |= captured_mask;
+            self.array_of_pieces[captured_square] = PAWNS as u8;
+        } 
+        else if move_data.get_captured_piece() as u8 != EMPTY_SQUARE 
+        {
+            let target_mask = 1u64 << target_square;
+            let enemy_color = if self.is_white_turn() { BLACK_PIECES } else { WHITE_PIECES };
+
+            self.bitboards_of_pieces[move_data.get_captured_piece()] |= target_mask;
+            self.bitboards_of_pieces[enemy_color] |= target_mask;
+            self.array_of_pieces[target_square] = move_data.get_captured_piece() as u8;
+        }
     }
 
     pub fn is_white_turn(&self) -> bool
@@ -215,4 +307,29 @@ impl Board
     {
         self.castling_rights
     }
+
+    fn update_en_passant_target(&mut self, move_data: &Move)
+    {
+        if move_data.get_flags() == FLAG_DOUBLE_PUSH 
+        {
+            let skipped_square = (move_data.get_start() + move_data.get_target()) / 2;
+            self.en_passant_target = 1u64 << skipped_square;
+        } 
+        else 
+        {
+            self.en_passant_target = 0;
+        }
+    }
+
+    fn update_castling_rights(&mut self, move_data: &Move)
+    {
+        self.castling_rights &= constants::CASTLING_RIGHTS_UPDATE_TABLE[move_data.get_start() as usize];
+        self.castling_rights &= constants::CASTLING_RIGHTS_UPDATE_TABLE[move_data.get_target() as usize];
+    }
+}
+
+pub struct GameState 
+{
+    pub castling_rights: u8,
+    pub en_passant_target: u64,
 }

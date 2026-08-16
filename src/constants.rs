@@ -28,6 +28,17 @@ pub const FILE_H: u64 = 0x8080808080808080;
 pub const KNIGHT_ATTACK_MAP: [u64; 64] = calculate_knight_attack_map();
 pub const KING_ATTACK_MAP: [u64; 64] = calculate_king_attack_map();
 
+pub const CASTLING_RIGHTS_UPDATE_TABLE: [u8; 64] = [
+    13, 15, 15, 15, 12, 15, 15, 14, // Rank 1 (A1, E1, H1)
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 2
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 3
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 4
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 5
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 6
+    15, 15, 15, 15, 15, 15, 15, 15, // Rank 7
+    7,  15, 15, 15, 3,  15, 15, 11, // Rank 8 (A8, E8, H8)
+];
+
 pub const ROOK_MAGICS: [u64; 64] = [
     0x2080008020400016, // Square 0
     0x0040002000401004, // Square 1
