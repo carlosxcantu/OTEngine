@@ -5,3 +5,5 @@ mod movedata;
 mod movegenerator;
 mod constants;
 mod magics;
+mod perft;
+mod evaluation;

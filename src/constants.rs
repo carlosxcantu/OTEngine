@@ -25,6 +25,12 @@ pub const FILE_F: u64 = 0x2020202020202020;
 pub const FILE_G: u64 = 0x4040404040404040;
 pub const FILE_H: u64 = 0x8080808080808080;
 
+pub const PAWN_VALUE: i32 = 100;
+pub const KNIGHT_VALUE: i32 = 320;
+pub const BISHOP_VALUE: i32 = 330;
+pub const ROOK_VALUE: i32 = 500;
+pub const QUEEN_VALUE: i32 = 900;
+
 pub const KNIGHT_ATTACK_MAP: [u64; 64] = calculate_knight_attack_map();
 pub const KING_ATTACK_MAP: [u64; 64] = calculate_king_attack_map();
 
@@ -171,6 +177,139 @@ pub const BISHOP_MAGICS: [u64; 64] = [
     0x0449004011027080, // Square 61
     0x2540410401820600, // Square 62
     0x0450521000408101, // Square 63
+];
+
+pub const PAWN_PST: [i32; 64] = [
+    // Rank 1 - Pawns can never be here
+    0,   0,   0,   0,   0,   0,   0,   0,
+    // Rank 2 - Negative center encourages pushing D and E pawns early
+    5,  10,  10, -20, -20,  10,  10,   5,
+    // Rank 3
+    5,  -5, -10,   0,   0, -10,  -5,   5,
+    // Rank 4
+    0,   0,   0,  20,  20,   0,   0,   0,
+    // Rank 5
+    5,   5,  10,  25,  25,  10,   5,   5,
+    // Rank 6 - Passed pawns become highly dangerous
+    10,  10,  20,  30,  30,  20,  10,  10,
+    // Rank 7 - About to promote, massive bonus
+    50,  50,  50,  50,  50,  50,  50,  50,
+    // Rank 8 - Pawns promote, handled by material logic
+    0,   0,   0,   0,   0,   0,   0,   0,
+];
+
+pub const KNIGHT_PST: [i32; 64] = [
+    // Rank 1 (A1 to H1) - Heavy penalties for back-rank/corners
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    // Rank 2
+    -40, -20,   0,   0,   0,   0, -20, -40,
+    // Rank 3 - Knights start getting active
+    -30,   0,  10,  15,  15,  10,   0, -30,
+    // Rank 4 - Central outposts
+    -30,   5,  15,  20,  20,  15,   5, -30,
+    // Rank 5
+    -30,   0,  15,  20,  20,  15,   0, -30,
+    // Rank 6 - C6 is index 42 (+20 bonus!)
+    -30,   5,  20,  15,  15,  20,   5, -30,
+    // Rank 7
+    -40, -20,   0,   5,   5,   0, -20, -40,
+    // Rank 8 (A8 to H8) - Deep enemy territory corners
+    -50, -40, -30, -30, -30, -30, -40, -50,
+];
+
+pub const KING_MIDGAME_PST: [i32; 64] = [
+    // Rank 1 - G1 (+30) and C1 (+10) encourage castling
+    20,  30,  10,   0,   0,  10,  30,  20,
+    // Rank 2 - Pawn shield squares
+    20,  20,   0,   0,   0,   0,  20,  20,
+    // Rank 3
+    -10, -20, -20, -20, -20, -20, -20, -10,
+    // Rank 4 - Heavy penalty for King marching out early
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    // Rank 5
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    // Rank 6
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    // Rank 7
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    // Rank 8
+    -30, -40, -40, -50, -50, -40, -40, -30,
+];
+
+pub const KING_ENDGAME_PST: [i32; 64] = [
+    // Rank 1 (Corners are heavily penalized)
+    -50, -30, -30, -30, -30, -30, -30, -50,
+    // Rank 2
+    -30, -10,   0,   0,   0,   0, -10, -30,
+    // Rank 3
+    -30,  -5,  20,  30,  30,  20,  -5, -30,
+    // Rank 4 (Maximum central bonuses)
+    -30,  -5,  30,  40,  40,  30,  -5, -30,
+    // Rank 5
+    -30,  -5,  30,  40,  40,  30,  -5, -30,
+    // Rank 6
+    -30,  -5,  20,  30,  30,  20,  -5, -30,
+    // Rank 7
+    -30, -10,   0,   0,   0,   0, -10, -30,
+    // Rank 8
+    -50, -30, -30, -30, -30, -30, -30, -50,
+];
+
+pub const BISHOP_PST: [i32; 64] = [
+    // Rank 1 (A1 to H1)
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    // Rank 2
+    -10,   5,   0,   0,   0,   0,   5, -10,
+    // Rank 3
+    -10,  10,  10,  10,  10,  10,  10, -10,
+    // Rank 4
+    -10,   0,  10,  10,  10,  10,   0, -10,
+    // Rank 5
+    -10,   5,   5,  10,  10,   5,   5, -10,
+    // Rank 6
+    -10,   0,   5,  10,  10,   5,   0, -10,
+    // Rank 7
+    -10,   0,   0,   0,   0,   0,   0, -10,
+    // Rank 8 (A8 to H8)
+    -20, -10, -10, -10, -10, -10, -10, -20,
+];
+
+pub const ROOK_PST: [i32; 64] = [
+    // Rank 1
+    0,   0,   0,   5,   5,   0,   0,   0,
+    // Rank 2
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    // Rank 3
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    // Rank 4
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    // Rank 5
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    // Rank 6
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    // Rank 7 (7th Rank Rook bonus)
+    5,  10,  10,  10,  10,  10,  10,   5,
+    // Rank 8
+    0,   0,   0,   0,   0,   0,   0,   0,
+];
+
+pub const QUEEN_PST: [i32; 64] = [
+    // Rank 1
+    -20, -10, -10,  -5,  -5, -10, -10, -20,
+    // Rank 2
+    -10,   0,   5,   0,   0,   0,   0, -10,
+    // Rank 3
+    -10,   5,   5,   5,   5,   5,   0, -10,
+    // Rank 4
+    0,   0,   5,   5,   5,   5,   0,  -5,
+    // Rank 5
+    -5,   0,   5,   5,   5,   5,   0,  -5,
+    // Rank 6
+    -10,   0,   5,   5,   5,   5,   0, -10,
+    // Rank 7
+    -10,   0,   0,   0,   0,   0,   0, -10,
+    // Rank 8
+    -20, -10, -10,  -5,  -5, -10, -10, -20,
 ];
 
 const fn calculate_knight_attack_map() -> [u64; 64] {
