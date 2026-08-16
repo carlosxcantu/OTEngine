@@ -3,6 +3,7 @@ use crate::magics::MagicBitBoards;
 use crate::movedata::Move;
 use crate::board::{self, Board};
 use crate::{constants::*, magics};
+use std::mem::MaybeUninit;
 
 pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList, magic_bitboards: &MagicBitBoards)
 {
@@ -445,30 +446,41 @@ pub fn is_square_attacked(square: usize, occupied_squares: u64, board: &Board, m
         }
     }
 
-    current_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(enemy_color);
-    if current_bitboard & magic_bitboards.get_rook_attacks(square, occupied_squares) > 0
+    let enemy_rooks_and_queens = board.get_bitboard(board::ROOKS) | board.get_bitboard(board::QUEENS);
+    if (enemy_rooks_and_queens & board.get_bitboard(enemy_color)) & magic_bitboards.get_rook_attacks(square, occupied_squares) > 0 
     {
         return true;
     }
 
-    current_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(enemy_color);
-    if current_bitboard & magic_bitboards.get_bishop_attacks(square, occupied_squares) > 0
+    let enemy_bishops_and_queens = board.get_bitboard(board::BISHOPS) | board.get_bitboard(board::QUEENS);
+    if (enemy_bishops_and_queens & board.get_bitboard(enemy_color)) & magic_bitboards.get_bishop_attacks(square, occupied_squares) > 0 
     {
         return true;
     }
+    // current_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(enemy_color);
+    // if current_bitboard & magic_bitboards.get_rook_attacks(square, occupied_squares) > 0
+    // {
+    //     return true;
+    // }
 
-    current_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(enemy_color);
-    if current_bitboard & (magic_bitboards.get_bishop_attacks(square, occupied_squares) | magic_bitboards.get_rook_attacks(square, occupied_squares)) > 0
-    {
-        return true;
-    }
+    // current_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(enemy_color);
+    // if current_bitboard & magic_bitboards.get_bishop_attacks(square, occupied_squares) > 0
+    // {
+    //     return true;
+    // }
+
+    // current_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(enemy_color);
+    // if current_bitboard & (magic_bitboards.get_bishop_attacks(square, occupied_squares) | magic_bitboards.get_rook_attacks(square, occupied_squares)) > 0
+    // {
+    //     return true;
+    // }
 
     false
 }
 
 pub struct MoveList
 {
-    move_list : [Move; 256],
+    move_list : [MaybeUninit<Move>; 256],
     count: usize,
 }
 
@@ -478,14 +490,24 @@ impl MoveList
     {
         MoveList
         { 
-            move_list: [Move::new(0,0,0,0,0); 256], 
+            move_list: unsafe {MaybeUninit::uninit().assume_init()}, 
             count: 0, 
         }
     }
 
     pub fn add_move(&mut self, move_data: Move)
     {
-        self.move_list[self.count] = move_data;
+        self.move_list[self.count].write(move_data);
         self.count += 1;
+    }
+
+    pub fn get_move(&self, index: usize) -> Move 
+    {
+        unsafe {self.move_list[index].assume_init()}
+    }
+
+    pub fn get_count(&self) -> usize
+    {
+        self.count
     }
 }
