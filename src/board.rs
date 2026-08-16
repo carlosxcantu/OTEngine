@@ -205,4 +205,14 @@ impl Board
     {
         self.array_of_pieces[target_square as usize] as u32
     }
+
+    pub fn get_en_passant_target(&self) -> u64
+    {
+        self.en_passant_target
+    }
+
+    pub fn get_castling_rights(&self) -> u8
+    {
+        self.castling_rights
+    }
 }
