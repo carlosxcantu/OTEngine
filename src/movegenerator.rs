@@ -1,5 +1,5 @@
+//Modules
 use crate::magics::MagicBitBoards;
-// Modules
 use crate::movedata::Move;
 use crate::board::{self, Board};
 use crate::{constants::*, magics};
@@ -457,24 +457,6 @@ pub fn is_square_attacked(square: usize, occupied_squares: u64, board: &Board, m
     {
         return true;
     }
-    // current_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(enemy_color);
-    // if current_bitboard & magic_bitboards.get_rook_attacks(square, occupied_squares) > 0
-    // {
-    //     return true;
-    // }
-
-    // current_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(enemy_color);
-    // if current_bitboard & magic_bitboards.get_bishop_attacks(square, occupied_squares) > 0
-    // {
-    //     return true;
-    // }
-
-    // current_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(enemy_color);
-    // if current_bitboard & (magic_bitboards.get_bishop_attacks(square, occupied_squares) | magic_bitboards.get_rook_attacks(square, occupied_squares)) > 0
-    // {
-    //     return true;
-    // }
-
     false
 }
 
