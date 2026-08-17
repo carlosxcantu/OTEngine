@@ -7,3 +7,4 @@ mod constants;
 mod magics;
 mod perft;
 mod evaluation;
+mod search;

@@ -101,10 +101,11 @@ pub fn evaluation_board(board: &Board) -> i32
     // King eval
     current_bitboard = board.get_bitboard(KINGS) & board.get_bitboard(WHITE_PIECES);
     let mut target_square = current_bitboard.trailing_zeros();
-    current_eval += ((KING_MIDGAME_PST[target_square as usize] * phase_weight) + (KING_ENDGAME_PST[target_square as usize] * (24 - phase_weight))) / 24;
+    let max_phase = phase_weight.min(24);
+    current_eval += ((KING_MIDGAME_PST[target_square as usize] * max_phase) + (KING_ENDGAME_PST[target_square as usize] * (24 - max_phase))) / 24;
     current_bitboard = board.get_bitboard(KINGS) & board.get_bitboard(BLACK_PIECES);
     target_square = current_bitboard.trailing_zeros() ^ 56;
-    current_eval -= ((KING_MIDGAME_PST[target_square as usize] * phase_weight) + (KING_ENDGAME_PST[target_square as usize] * (24 - phase_weight))) / 24;
+    current_eval -= ((KING_MIDGAME_PST[target_square as usize] * max_phase) + (KING_ENDGAME_PST[target_square as usize] * (24 - max_phase))) / 24;
 
     if board.is_white_turn()
     {

@@ -11,11 +11,11 @@ pub fn generate_psuedo_legal_moves(board: &Board, move_list: &mut MoveList, magi
     let empty_squares: u64 = !occupied_squares;
 
     generate_pawn_moves(board, move_list, empty_squares);
-    generate_knight_moves(board, move_list, empty_squares);
-    generate_king_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
-    generate_bishop_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
-    generate_rook_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
-    generate_queen_moves(board, move_list, empty_squares, occupied_squares, magic_bitboards);
+    generate_knight_moves(board, move_list);
+    generate_king_moves(board, move_list, occupied_squares, magic_bitboards);
+    generate_bishop_moves(board, move_list, occupied_squares, magic_bitboards);
+    generate_rook_moves(board, move_list, occupied_squares, magic_bitboards);
+    generate_queen_moves(board, move_list, occupied_squares, magic_bitboards);
 }
 
 pub fn generate_pawn_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64)
@@ -230,7 +230,7 @@ pub fn generate_pawn_moves(board: &Board, move_list: &mut MoveList, empty_square
     }
 }
 
-pub fn generate_knight_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64)
+pub fn generate_knight_moves(board: &Board, move_list: &mut MoveList)
 {
     let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
     let mut knight_bitboard = board.get_bitboard(board::KNIGHTS) & board.get_bitboard(current_color);
@@ -251,7 +251,7 @@ pub fn generate_knight_moves(board: &Board, move_list: &mut MoveList, empty_squa
     }
 }
 
-pub fn generate_king_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
+pub fn generate_king_moves(board: &Board, move_list: &mut MoveList, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
     let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
     let mut king_bitboard = board.get_bitboard(board::KINGS) & board.get_bitboard(current_color);
@@ -343,7 +343,7 @@ pub fn generate_king_moves(board: &Board, move_list: &mut MoveList, empty_square
     }
 }
 
-pub fn generate_rook_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
+pub fn generate_rook_moves(board: &Board, move_list: &mut MoveList, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
     let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
     let mut rook_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(current_color);
@@ -364,7 +364,7 @@ pub fn generate_rook_moves(board: &Board, move_list: &mut MoveList, empty_square
     }
 }
 
-pub fn generate_bishop_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
+pub fn generate_bishop_moves(board: &Board, move_list: &mut MoveList, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
     let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
     let mut bishop_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(current_color);
@@ -385,7 +385,7 @@ pub fn generate_bishop_moves(board: &Board, move_list: &mut MoveList, empty_squa
     }
 }
 
-pub fn generate_queen_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
+pub fn generate_queen_moves(board: &Board, move_list: &mut MoveList, occupied_squares: u64, magic_bitboards: &MagicBitBoards)
 {
     let current_color = if board.is_white_turn() {board::WHITE_PIECES} else {board::BLACK_PIECES};
     let mut queen_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(current_color);
@@ -472,7 +472,7 @@ impl MoveList
     {
         MoveList
         { 
-            move_list: unsafe {MaybeUninit::uninit().assume_init()}, 
+            move_list: [const { MaybeUninit::uninit() }; 256], 
             count: 0, 
         }
     }
@@ -491,5 +491,65 @@ impl MoveList
     pub fn get_count(&self) -> usize
     {
         self.count
+    }
+
+    pub fn sort_moves(&mut self) 
+    {
+        let mut scores = [0; 256];
+        for i in 0..self.count 
+        {
+            scores[i] = self.score_move(&self.get_move(i));
+        }
+
+        // Sort
+        for i in 0..self.count 
+        {
+            let mut best_score = -99999;
+            let mut best_index = i;
+            
+            for j in i..self.count 
+            {
+                if scores[j] > best_score 
+                {
+                    best_score = scores[j];
+                    best_index = j;
+                }
+            }
+
+            // Swap the moves
+            let temp_move = self.get_move(i);
+            let best_move = self.get_move(best_index);
+            self.move_list[i].write(best_move);
+            self.move_list[best_index].write(temp_move);
+            scores.swap(i, best_index);
+        }
+    }
+
+    fn score_move(&self, move_data: &Move) -> i32 
+    {
+        let mut score = 0;
+        let captured = move_data.get_captured_piece();
+        let piece = move_data.get_piece();
+        let flags = move_data.get_flags();
+
+        // MVV-LVA
+        if captured != board::EMPTY_SQUARE as usize 
+        {
+            score = 10 * PIECE_VALUES[captured] - PIECE_VALUES[piece];
+        }
+
+        // Promotion Bonuses
+        if flags >= board::FLAG_PROMOTE_QUEEN && flags <= board::FLAG_PROMOTE_KNIGHT 
+        {
+            score += match flags {
+                board::FLAG_PROMOTE_QUEEN => 9000,
+                board::FLAG_PROMOTE_ROOK => 5000,
+                board::FLAG_PROMOTE_BISHOP => 3300,
+                board::FLAG_PROMOTE_KNIGHT => 3200,
+                _ => 0,
+            };
+        }
+
+        score
     }
 }

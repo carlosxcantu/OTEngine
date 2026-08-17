@@ -7,14 +7,21 @@ mod constants;
 mod magics;
 mod perft;
 mod evaluation;
-use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask, find_magic_number}, movegenerator::{MoveList, generate_psuedo_legal_moves}};
+mod search;
+use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask}, movegenerator::{MoveList, generate_psuedo_legal_moves}};
+
+const depth: u8 = 5;
 
 fn main() 
 {
     let magic_bitboards = MagicBitBoards::new();
     let mut board = Board::new();
-    // let mut move_list = MoveList::new();
 
-    perft::perft_divide(&mut board, &magic_bitboards, 5);
-    // generate_psuedo_legal_moves(&board, &mut move_list, &magic_bitboards);
+    println!("Engine is thinking...");
+    
+    let best_move = search::search_root(&mut board, depth, &magic_bitboards);
+    
+    let move_string = perft::get_algebraic_move(&best_move);
+    
+    println!("Best move found: {}", move_string);
 }

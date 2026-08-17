@@ -31,11 +31,14 @@ pub const BISHOP_VALUE: i32 = 330;
 pub const ROOK_VALUE: i32 = 500;
 pub const QUEEN_VALUE: i32 = 900;
 
-pub const KNIGHT_PHASE_WEIGHT: i32 = 1;
-pub const BISHOP_PHASE_WEIGHT: i32 = 1;
-pub const ROOK_PHASE_WEIGHT: i32 = 2;
-pub const QUEEN_PHASE_WEIGHT: i32 = 4;
-
+pub const PIECE_VALUES: [i32; 6] = [
+    100,    // PAWNS
+    320,    // KNIGHTS
+    330,    // BISHOPS
+    500,    // ROOKS
+    900,    // QUEENS
+    10000,  // KINGS 
+];
 
 pub const KNIGHT_ATTACK_MAP: [u64; 64] = calculate_knight_attack_map();
 pub const KING_ATTACK_MAP: [u64; 64] = calculate_king_attack_map();
