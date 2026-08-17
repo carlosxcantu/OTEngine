@@ -1,6 +1,4 @@
 mod board;
-mod pieces;
-mod engine;
 mod movedata;
 mod movegenerator;
 mod constants;
@@ -8,3 +6,6 @@ mod magics;
 mod perft;
 mod evaluation;
 mod search;
+mod zobrist;
+mod transposition;
+mod uci;

@@ -41,8 +41,6 @@ pub fn generate_pawn_moves(board: &Board, move_list: &mut MoveList, empty_square
         let mut left_capture_promotion = left_captures & RANK_8;
         left_captures &= !RANK_8;
 
-        // TODO En Passant
-
         // Loops for move generation
         while single_pushes != 0 
         {
@@ -406,6 +404,258 @@ pub fn generate_queen_moves(board: &Board, move_list: &mut MoveList, occupied_sq
     }
 }
 
+pub fn generate_tactical_moves(board: &Board, move_list: &mut MoveList, magic_bitboards: &MagicBitBoards) 
+{
+    let occupied_squares = board.get_bitboard(board::WHITE_PIECES) | board.get_bitboard(board::BLACK_PIECES);
+    let enemies = if board.is_white_turn() { board.get_bitboard(board::BLACK_PIECES) } else { board.get_bitboard(board::WHITE_PIECES) };
+    let empty_squares = !occupied_squares;
+
+    generate_tactical_pawn_moves(board, move_list, empty_squares, enemies);
+    generate_tactical_piece_moves(board, move_list, occupied_squares, enemies, magic_bitboards);
+}
+
+pub fn generate_tactical_pawn_moves(board: &Board, move_list: &mut MoveList, empty_squares: u64, enemies: u64) 
+{
+    let mut pawn_bitboard = board.get_bitboard(board::PAWNS);
+
+    if board.is_white_turn() 
+    {
+        pawn_bitboard &= board.get_bitboard(board::WHITE_PIECES);
+
+        // Only generate pushes if they reach Rank 8 (Promotions)
+        let single_pushes = (pawn_bitboard << 8) & empty_squares;
+        let mut promoting_pushes = single_pushes & RANK_8;
+
+        let mut right_captures = ((pawn_bitboard & ZERO_H_FILE) << 9) & enemies;
+        let mut right_capture_promotion = right_captures & RANK_8;
+        right_captures &= !RANK_8;
+
+        let mut left_captures = ((pawn_bitboard & ZERO_A_FILE) << 7) & enemies;
+        let mut left_capture_promotion = left_captures & RANK_8;
+        left_captures &= !RANK_8;
+
+        while right_captures != 0 
+        {
+            let target_square = right_captures.trailing_zeros();
+            move_list.add_move(Move::new(target_square - 9, target_square, 0, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            right_captures &= right_captures - 1;
+        }
+
+        while left_captures != 0 
+        {
+            let target_square = left_captures.trailing_zeros();
+            move_list.add_move(Move::new(target_square - 7, target_square, 0, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            left_captures &= left_captures - 1;
+        }
+
+        while promoting_pushes != 0 
+        {
+            let target_square = promoting_pushes.trailing_zeros();
+            move_list.add_move(Move::new(target_square - 8, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square - 8, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square - 8, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square - 8, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            promoting_pushes &= promoting_pushes - 1;
+        }
+
+        while right_capture_promotion != 0 
+        {
+            let target_square = right_capture_promotion.trailing_zeros();
+            move_list.add_move(Move::new(target_square - 9, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 9, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 9, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 9, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            right_capture_promotion &= right_capture_promotion - 1;
+        }
+
+        while left_capture_promotion != 0 
+        {
+            let target_square = left_capture_promotion.trailing_zeros();
+            move_list.add_move(Move::new(target_square - 7, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 7, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 7, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square - 7, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            left_capture_promotion &= left_capture_promotion - 1;
+        }
+
+        if board.get_en_passant_target() != 0 
+        {
+            let mut right_ep = ((pawn_bitboard & ZERO_H_FILE) << 9) & board.get_en_passant_target();
+            let mut left_ep = ((pawn_bitboard & ZERO_A_FILE) << 7) & board.get_en_passant_target();
+
+            while right_ep != 0 {
+                let target_square = right_ep.trailing_zeros();
+                move_list.add_move(Move::new(target_square - 9, target_square, board::FLAG_EN_PASSANT, board::PAWNS as u32, board::PAWNS as u32));
+                right_ep &= right_ep - 1;
+            }
+
+            while left_ep != 0 {
+                let target_square = left_ep.trailing_zeros();
+                move_list.add_move(Move::new(target_square - 7, target_square, board::FLAG_EN_PASSANT, board::PAWNS as u32, board::PAWNS as u32));
+                left_ep &= left_ep - 1;
+            }
+        }
+    } 
+    else 
+    {
+        // Black pawns
+        pawn_bitboard &= board.get_bitboard(board::BLACK_PIECES);
+
+        let single_pushes = (pawn_bitboard >> 8) & empty_squares;
+        let mut promoting_pushes = single_pushes & RANK_1;
+
+        let mut right_captures = ((pawn_bitboard & ZERO_A_FILE) >> 9) & enemies;
+        let mut right_capture_promotion = right_captures & RANK_1;
+        right_captures &= !RANK_1;
+
+        let mut left_captures = ((pawn_bitboard & ZERO_H_FILE) >> 7) & enemies;
+        let mut left_capture_promotion = left_captures & RANK_1;
+        left_captures &= !RANK_1;
+
+        while right_captures != 0 
+        {
+            let target_square = right_captures.trailing_zeros();
+            move_list.add_move(Move::new(target_square + 9, target_square, 0, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            right_captures &= right_captures - 1;
+        }
+
+        while left_captures != 0 
+        {
+            let target_square = left_captures.trailing_zeros();
+            move_list.add_move(Move::new(target_square + 7, target_square, 0, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            left_captures &= left_captures - 1;
+        }
+
+        while promoting_pushes != 0 
+        {
+            let target_square = promoting_pushes.trailing_zeros();
+            move_list.add_move(Move::new(target_square + 8, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square + 8, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square + 8, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            move_list.add_move(Move::new(target_square + 8, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board::EMPTY_SQUARE as u32));
+            promoting_pushes &= promoting_pushes - 1;
+        }
+
+        while right_capture_promotion != 0 
+        {
+            let target_square = right_capture_promotion.trailing_zeros();
+            move_list.add_move(Move::new(target_square + 9, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 9, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 9, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 9, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            right_capture_promotion &= right_capture_promotion - 1;
+        }
+
+        while left_capture_promotion != 0 
+        {
+            let target_square = left_capture_promotion.trailing_zeros();
+            move_list.add_move(Move::new(target_square + 7, target_square, board::FLAG_PROMOTE_QUEEN, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 7, target_square, board::FLAG_PROMOTE_ROOK, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 7, target_square, board::FLAG_PROMOTE_BISHOP, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            move_list.add_move(Move::new(target_square + 7, target_square, board::FLAG_PROMOTE_KNIGHT, board::PAWNS as u32, board.get_piece_from_array(target_square)));
+            left_capture_promotion &= left_capture_promotion - 1;
+        }
+
+        if board.get_en_passant_target() != 0 
+        {
+            let mut right_ep = ((pawn_bitboard & ZERO_A_FILE) >> 9) & board.get_en_passant_target();
+            let mut left_ep = ((pawn_bitboard & ZERO_H_FILE) >> 7) & board.get_en_passant_target();
+
+            while right_ep != 0 {
+                let target_square = right_ep.trailing_zeros();
+                move_list.add_move(Move::new(target_square + 9, target_square, board::FLAG_EN_PASSANT, board::PAWNS as u32, board::PAWNS as u32));
+                right_ep &= right_ep - 1;
+            }
+
+            while left_ep != 0 {
+                let target_square = left_ep.trailing_zeros();
+                move_list.add_move(Move::new(target_square + 7, target_square, board::FLAG_EN_PASSANT, board::PAWNS as u32, board::PAWNS as u32));
+                left_ep &= left_ep - 1;
+            }
+        }
+    }
+}
+
+pub fn generate_tactical_piece_moves(board: &Board, move_list: &mut MoveList, occupied_squares: u64, enemies: u64, magic_bitboards: &MagicBitBoards) 
+{
+    let current_color = if board.is_white_turn() { board::WHITE_PIECES } else { board::BLACK_PIECES };
+
+    // Knights
+    let mut knight_bitboard = board.get_bitboard(board::KNIGHTS) & board.get_bitboard(current_color);
+    while knight_bitboard != 0 
+    {
+        let start_square = knight_bitboard.trailing_zeros();
+        let mut attacks = KNIGHT_ATTACK_MAP[start_square as usize] & enemies; // Filter by enemies mask
+        while attacks != 0 
+        {
+            let target_square = attacks.trailing_zeros();
+            move_list.add_move(Move::new(start_square, target_square, 0, board::KNIGHTS as u32, board.get_piece_from_array(target_square)));
+            attacks &= attacks - 1;
+        }
+        knight_bitboard &= knight_bitboard - 1;
+    }
+
+    // Kings (No castling generated)
+    let mut king_bitboard = board.get_bitboard(board::KINGS) & board.get_bitboard(current_color);
+    while king_bitboard != 0 
+    {
+        let start_square = king_bitboard.trailing_zeros();
+        let mut attacks = KING_ATTACK_MAP[start_square as usize] & enemies;
+        while attacks != 0 
+        {
+            let target_square = attacks.trailing_zeros();
+            move_list.add_move(Move::new(start_square, target_square, 0, board::KINGS as u32, board.get_piece_from_array(target_square)));
+            attacks &= attacks - 1;
+        }
+        king_bitboard &= king_bitboard - 1;
+    }
+
+    // Bishops
+    let mut bishop_bitboard = board.get_bitboard(board::BISHOPS) & board.get_bitboard(current_color);
+    while bishop_bitboard != 0 
+    {
+        let start_square = bishop_bitboard.trailing_zeros();
+        let mut attacks = magic_bitboards.get_bishop_attacks(start_square as usize, occupied_squares) & enemies;
+        while attacks != 0 
+        {
+            let target_square = attacks.trailing_zeros();
+            move_list.add_move(Move::new(start_square, target_square, 0, board::BISHOPS as u32, board.get_piece_from_array(target_square)));
+            attacks &= attacks - 1;
+        }
+        bishop_bitboard &= bishop_bitboard - 1;
+    }
+
+    // Rooks
+    let mut rook_bitboard = board.get_bitboard(board::ROOKS) & board.get_bitboard(current_color);
+    while rook_bitboard != 0 
+    {
+        let start_square = rook_bitboard.trailing_zeros();
+        let mut attacks = magic_bitboards.get_rook_attacks(start_square as usize, occupied_squares) & enemies;
+        while attacks != 0 
+        {
+            let target_square = attacks.trailing_zeros();
+            move_list.add_move(Move::new(start_square, target_square, 0, board::ROOKS as u32, board.get_piece_from_array(target_square)));
+            attacks &= attacks - 1;
+        }
+        rook_bitboard &= rook_bitboard - 1;
+    }
+
+    // Queens
+    let mut queen_bitboard = board.get_bitboard(board::QUEENS) & board.get_bitboard(current_color);
+    while queen_bitboard != 0 
+    {
+        let start_square = queen_bitboard.trailing_zeros();
+        let mut attacks = (magic_bitboards.get_bishop_attacks(start_square as usize, occupied_squares) | magic_bitboards.get_rook_attacks(start_square as usize, occupied_squares)) & enemies;
+        while attacks != 0 
+        {
+            let target_square = attacks.trailing_zeros();
+            move_list.add_move(Move::new(start_square, target_square, 0, board::QUEENS as u32, board.get_piece_from_array(target_square)));
+            attacks &= attacks - 1;
+        }
+        queen_bitboard &= queen_bitboard - 1;
+    }
+}
+
 pub fn is_square_attacked(square: usize, occupied_squares: u64, board: &Board, magic_bitboards: &MagicBitBoards) -> bool
 {
     let enemy_color: usize = if board.is_white_turn() {board::BLACK_PIECES} else {board::WHITE_PIECES};
@@ -460,10 +710,30 @@ pub fn is_square_attacked(square: usize, occupied_squares: u64, board: &Board, m
     false
 }
 
+pub fn is_move_legal(board: &mut Board, magic_bitboards: &MagicBitBoards) -> bool 
+{
+    board.turn_end();
+    let current_color = if board.is_white_turn() { board::WHITE_PIECES } else { board::BLACK_PIECES };
+    let king_bitboard = board.get_bitboard(board::KINGS) & board.get_bitboard(current_color);
+    if king_bitboard == 0 
+    {
+        board.turn_end();
+        return false;
+    }
+
+    let king_square = king_bitboard.trailing_zeros() as usize;
+    let occupied_squares = board.get_bitboard(board::WHITE_PIECES) | board.get_bitboard(board::BLACK_PIECES);
+    let is_in_check = is_square_attacked(king_square, occupied_squares, board, magic_bitboards);
+    board.turn_end();
+    !is_in_check
+}
+
 pub struct MoveList
 {
     move_list : [MaybeUninit<Move>; 256],
+    scores: [i32; 256],
     count: usize,
+    order: [usize; 256],
 }
 
 impl MoveList
@@ -473,7 +743,9 @@ impl MoveList
         MoveList
         { 
             move_list: [const { MaybeUninit::uninit() }; 256], 
+            scores: [0; 256],
             count: 0, 
+            order: [0; 256],
         }
     }
 
@@ -493,40 +765,30 @@ impl MoveList
         self.count
     }
 
-    pub fn sort_moves(&mut self) 
+    pub fn score_moves(&mut self, board: &Board, tt_move: Option<Move>, killer_1: Option<Move>, killer_2: Option<Move>, history: &[[i32; 64]; 12]) 
     {
-        let mut scores = [0; 256];
         for i in 0..self.count 
         {
-            scores[i] = self.score_move(&self.get_move(i));
+            self.scores[i] = self.score_move(board, &self.get_move(i), tt_move, killer_1, killer_2, history);
+            self.order[i] = i;
         }
-
-        // Sort
-        for i in 0..self.count 
-        {
-            let mut best_score = -99999;
-            let mut best_index = i;
-            
-            for j in i..self.count 
-            {
-                if scores[j] > best_score 
-                {
-                    best_score = scores[j];
-                    best_index = j;
-                }
-            }
-
-            // Swap the moves
-            let temp_move = self.get_move(i);
-            let best_move = self.get_move(best_index);
-            self.move_list[i].write(best_move);
-            self.move_list[best_index].write(temp_move);
-            scores.swap(i, best_index);
-        }
+        self.order[0..self.count].sort_by_key(|&i| std::cmp::Reverse(self.scores[i]));
     }
 
-    fn score_move(&self, move_data: &Move) -> i32 
+    pub fn pick_move(&mut self, index: usize) -> Move 
     {
+        self.get_move(self.order[index])
+    }
+
+    fn score_move(&self, board: &Board, move_data: &Move, tt_move: Option<Move>, killer_1: Option<Move>, killer_2: Option<Move>, history: &[[i32; 64]; 12]) -> i32 
+    {
+        if let Some(best) = tt_move 
+        {
+            if *move_data == best 
+            {
+                return 30000;
+            }
+        }
         let mut score = 0;
         let captured = move_data.get_captured_piece();
         let piece = move_data.get_piece();
@@ -535,7 +797,27 @@ impl MoveList
         // MVV-LVA
         if captured != board::EMPTY_SQUARE as usize 
         {
-            score = 10 * PIECE_VALUES[captured] - PIECE_VALUES[piece];
+            score = 10000 + (10 * PIECE_VALUES[captured] - PIECE_VALUES[piece]);
+        }
+        else if flags < board::FLAG_PROMOTE_QUEEN 
+        {
+            if let Some(k1) = killer_1 
+            {
+                if *move_data == k1 
+                { 
+                    return 9000; 
+                }
+            }
+            if let Some(k2) = killer_2 
+            {
+                if *move_data == k2 
+                { 
+                    return 8000; 
+                }
+            }
+            let color_offset = if board.is_white_turn() { 0 } else { 6 };
+            let piece_index = (piece + color_offset) % 12;
+            score += history[piece_index][(move_data.get_target() as usize) & 63];
         }
 
         // Promotion Bonuses

@@ -1,4 +1,4 @@
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Move
 {
     data: u32,
@@ -6,7 +6,6 @@ pub struct Move
 
 impl Move
 {
-    // Constructor to pack it
     pub fn new(start: u32, target: u32, flags: u32, piece: u32, captured_piece: u32) -> Self 
     {
         Move 
@@ -15,7 +14,6 @@ impl Move
         }
     }
 
-    // Methods to unpack it
     pub fn get_start(&self) -> u32 
     {
         self.data & 0x3F

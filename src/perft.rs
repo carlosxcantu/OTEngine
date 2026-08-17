@@ -2,8 +2,9 @@ use std::time::Instant;
 
 use crate::board::{self, Board};
 use crate::movedata::Move;
-use crate::movegenerator::{generate_psuedo_legal_moves, is_square_attacked, MoveList};
+use crate::movegenerator::{generate_psuedo_legal_moves, is_square_attacked, is_move_legal, MoveList};
 use crate::magics::MagicBitBoards;
+use crate::zobrist::{self, Zobrist};
 
 pub fn get_algebraic_move(move_data: &Move) -> String 
 {
@@ -40,19 +41,7 @@ pub fn get_algebraic_move(move_data: &Move) -> String
     move_str
 }
 
-fn is_move_legal(board: &mut Board, magic_bitboards: &MagicBitBoards) -> bool 
-{
-    board.turn_end();
-    let current_color = if board.is_white_turn() { board::WHITE_PIECES } else { board::BLACK_PIECES };
-    let king_bitboard = board.get_bitboard(board::KINGS) & board.get_bitboard(current_color);
-    let king_square = king_bitboard.trailing_zeros() as usize;
-    let occupied_squares = board.get_bitboard(board::WHITE_PIECES) | board.get_bitboard(board::BLACK_PIECES);
-    let is_in_check = is_square_attacked(king_square, occupied_squares, board, magic_bitboards);
-    board.turn_end();
-    !is_in_check
-}
-
-pub fn perft(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8) -> u64 
+pub fn perft(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8, zobrist: &Zobrist) -> u64 
 {
     if depth == 0 
     {
@@ -67,11 +56,11 @@ pub fn perft(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8) -> 
     for i in 0..move_list.get_count() 
     {
         let the_move = move_list.get_move(i);
-        board.make_move(&the_move);
+        board.make_move(&the_move, zobrist);
 
         if is_move_legal(board, magic_bitboards) 
         {
-            nodes += perft(board, magic_bitboards, depth - 1);
+            nodes += perft(board, magic_bitboards, depth - 1, zobrist);
         }
 
         board.unmake_move(&the_move);
@@ -80,7 +69,7 @@ pub fn perft(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8) -> 
     nodes
 }
 
-pub fn perft_divide(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8) 
+pub fn perft_divide(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: u8, zobrist: &Zobrist) 
 {
     if depth == 0 
     {
@@ -98,11 +87,11 @@ pub fn perft_divide(board: &mut Board, magic_bitboards: &MagicBitBoards, depth: 
     for i in 0..move_list.get_count() 
     {
         let the_move = move_list.get_move(i);
-        board.make_move(&the_move);
+        board.make_move(&the_move, zobrist);
 
         if is_move_legal(board, magic_bitboards) 
         {
-            let branch_nodes = perft(board, magic_bitboards, depth - 1);
+            let branch_nodes = perft(board, magic_bitboards, depth - 1, zobrist);
             println!("{}: {}", get_algebraic_move(&the_move), branch_nodes);
             total_nodes += branch_nodes;
         }

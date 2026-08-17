@@ -1,5 +1,6 @@
 //Modules
-use crate::{constants::{self, CASTLING_RIGHTS_UPDATE_TABLE}, movedata::Move};
+use crate::{constants::{self, CASTLING_RIGHTS_UPDATE_TABLE}, movedata::Move, zobrist::Zobrist};
+use crate::constants::*;
 
 // Array Index for respective BitBoard
 pub const PAWNS: usize = 0;
@@ -30,12 +31,15 @@ pub struct Board
     white_to_move: bool,
     castling_rights: u8, // A 4-bit flag to track who can castle
     en_passant_target: u64, // The square a pawn just skipped over
-    history: Vec<GameState>
+    history: Vec<GameState>,
+    pub zobrist_key: u64,
+    pub incremental_eval: i32, // NEW
+    pub phase_weight: i32,
 }
 
 impl Board
 {
-    pub fn new() -> Self 
+    pub fn new(zobrist: &Zobrist) -> Self 
     {
         let mut starting_array: [u8; 64] = [EMPTY_SQUARE; 64];
 
@@ -80,56 +84,113 @@ impl Board
             0xFFFF000000000000, // BLACK_PIECES: Rank 7 and 8
         ];
 
-        Self 
+        let mut new_board = Self 
         {
             bitboards_of_pieces: starting_bitboards,
             array_of_pieces: starting_array,
-            white_to_move: true,        // White always moves first
-            castling_rights: 15,        // 15 is binary 1111 (All 4 castling rights available)
-            en_passant_target: 0,       // No en passant target on turn 1
-            history: Vec::with_capacity(512)
+            white_to_move: true,        
+            castling_rights: 15,        
+            en_passant_target: 0,       
+            history: Vec::with_capacity(512),
+            zobrist_key: 0,
+            incremental_eval: 0, 
+            phase_weight: 0,
+        };
+
+        new_board.init_eval();
+        new_board.zobrist_key = new_board.generate_zobrist_key(zobrist);
+        new_board
+    }
+
+    pub fn init_eval(&mut self) 
+    {
+        self.incremental_eval = 0;
+        self.phase_weight = 0;
+        for square in 0..64 
+        {
+            let piece = self.array_of_pieces[square] as usize;
+            if piece != EMPTY_SQUARE as usize && piece != KINGS as usize 
+            {
+                let is_white = (self.get_bitboard(WHITE_PIECES) & (1u64 << square)) != 0;
+                self.incremental_eval += Self::get_piece_value_pst(piece, square, is_white);
+                self.phase_weight += Self::get_piece_phase(piece);
+            }
         }
     }
 
-    pub fn make_move(&mut self, move_data: &Move)
+    pub fn make_move(&mut self, move_data: &Move, zobrist: &Zobrist)
     {
         self.history.push(GameState
         {
             castling_rights: self.castling_rights,
             en_passant_target: self.en_passant_target,
+            zobrist_key: self.zobrist_key,
+            incremental_eval: self.incremental_eval, 
+            phase_weight: self.phase_weight,
         });
+
+        // Hash OUT the old Castling Rights and En Passant file
+        self.zobrist_key ^= zobrist.castling_keys[self.castling_rights as usize];
+        if self.en_passant_target != 0 
+        {
+            let file = self.en_passant_target.trailing_zeros() as usize % 8;
+            self.zobrist_key ^= zobrist.en_passant_keys[file];
+        }
 
         self.update_en_passant_target(move_data);
         self.update_castling_rights(move_data);
-
-        // Capture Detector
-        if self.array_of_pieces[move_data.get_target() as usize] != EMPTY_SQUARE
+        self.zobrist_key ^= zobrist.castling_keys[self.castling_rights as usize];
+        if self.en_passant_target != 0 
         {
-            let target_mask: u64 = 1u64 << move_data.get_target();
-            self.bitboards_of_pieces[self.array_of_pieces[move_data.get_target() as usize] as usize] &= !target_mask;
-
-            if self.is_white_turn()
-            {
-                self.bitboards_of_pieces[BLACK_PIECES] &= !target_mask;
-            }
-            else
-            {
-                self.bitboards_of_pieces[WHITE_PIECES] &= !target_mask;
-            }
+            let file = self.en_passant_target.trailing_zeros() as usize % 8;
+            self.zobrist_key ^= zobrist.en_passant_keys[file];
         }
 
-        let move_mask: u64 = (1u64 << move_data.get_start()) | (1u64 << move_data.get_target());
-        self.bitboards_of_pieces[move_data.get_piece()] ^= move_mask;
-        let color_index = if self.is_white_turn() {WHITE_PIECES} else {BLACK_PIECES};
-        self.bitboards_of_pieces[color_index] ^= move_mask;
-        self.array_of_pieces[move_data.get_start() as usize] = EMPTY_SQUARE;
-        self.array_of_pieces[move_data.get_target() as usize] = move_data.get_piece() as u8;
+        let is_white = self.is_white_turn();
+        let my_offset = if self.is_white_turn() { 0 } else { 6 };
+        let enemy_offset = if self.is_white_turn() { 6 } else { 0 };
+        let target_square = move_data.get_target() as usize;
+        let start_square = move_data.get_start() as usize;
+        let piece = move_data.get_piece();
         let flag = move_data.get_flags();
 
-        //Flags for Special Moves
+        if self.array_of_pieces[target_square] != EMPTY_SQUARE
+        {
+            let captured_piece = self.array_of_pieces[target_square] as usize;
+            self.zobrist_key ^= zobrist.piece_keys[captured_piece + enemy_offset][target_square];
+            let target_mask: u64 = 1u64 << target_square;
+            self.bitboards_of_pieces[captured_piece] &= !target_mask;
+            if self.is_white_turn() 
+            { 
+                self.bitboards_of_pieces[BLACK_PIECES] &= !target_mask; 
+            }
+            else 
+            { 
+                self.bitboards_of_pieces[WHITE_PIECES] &= !target_mask; 
+            }
+
+            self.incremental_eval -= Self::get_piece_value_pst(captured_piece, target_square, !is_white);
+            self.phase_weight -= Self::get_piece_phase(captured_piece);
+        }
+
+        self.zobrist_key ^= zobrist.piece_keys[piece + my_offset][start_square];
+        self.zobrist_key ^= zobrist.piece_keys[piece + my_offset][target_square];
+
+        let move_mask: u64 = (1u64 << start_square) | (1u64 << target_square);
+        self.bitboards_of_pieces[piece] ^= move_mask;
+        let color_index = if self.is_white_turn() {WHITE_PIECES} else {BLACK_PIECES};
+        self.bitboards_of_pieces[color_index] ^= move_mask;
+        self.array_of_pieces[start_square] = EMPTY_SQUARE;
+        self.array_of_pieces[target_square] = piece as u8;
+
+        if piece != KINGS as usize 
+        {
+            self.incremental_eval -= Self::get_piece_value_pst(piece, start_square, is_white);
+            self.incremental_eval += Self::get_piece_value_pst(piece, target_square, is_white);
+        }
+        
         if flag >= FLAG_PROMOTE_QUEEN && flag <= FLAG_PROMOTE_KNIGHT 
         {
-            let target_square = move_data.get_target() as usize;
             let target_mask = 1u64 << target_square;
             self.bitboards_of_pieces[PAWNS] &= !target_mask;
 
@@ -142,32 +203,38 @@ impl Board
                 _ => unreachable!(),
             };
 
+            self.zobrist_key ^= zobrist.piece_keys[PAWNS + my_offset][target_square];
+            self.zobrist_key ^= zobrist.piece_keys[promoted_piece + my_offset][target_square];
+
             self.bitboards_of_pieces[promoted_piece] |= target_mask;
             self.array_of_pieces[target_square] = promoted_piece as u8;
+            self.incremental_eval -= Self::get_piece_value_pst(PAWNS, target_square, is_white);
+            self.incremental_eval += Self::get_piece_value_pst(promoted_piece, target_square, is_white);
+            self.phase_weight += Self::get_piece_phase(promoted_piece);
         }
 
         if flag == FLAG_EN_PASSANT 
         {
-            let target_square = move_data.get_target() as usize;
             let captured_square = if self.is_white_turn() { target_square - 8 } else { target_square + 8 };
             let captured_mask = 1u64 << captured_square;
             self.bitboards_of_pieces[PAWNS] &= !captured_mask;
+            self.zobrist_key ^= zobrist.piece_keys[PAWNS + enemy_offset][captured_square];
 
-            if self.is_white_turn() 
-            {
-                self.bitboards_of_pieces[BLACK_PIECES] &= !captured_mask;
+            if self.is_white_turn()
+            { 
+                self.bitboards_of_pieces[BLACK_PIECES] &= !captured_mask; 
             } 
             else 
-            {
-                self.bitboards_of_pieces[WHITE_PIECES] &= !captured_mask;
+            { 
+                self.bitboards_of_pieces[WHITE_PIECES] &= !captured_mask; 
             }
 
             self.array_of_pieces[captured_square] = EMPTY_SQUARE;
+            self.incremental_eval -= Self::get_piece_value_pst(PAWNS, captured_square, !is_white);
         }
 
         if flag == FLAG_KING_CASTLE || flag == FLAG_QUEEN_CASTLE 
         {
-            let target_square = move_data.get_target() as usize;
             let (rook_start, rook_target) = if flag == FLAG_KING_CASTLE 
             {
                 (target_square + 1, target_square - 1)
@@ -177,23 +244,28 @@ impl Board
                 (target_square - 2, target_square + 1)
             };
 
+            self.zobrist_key ^= zobrist.piece_keys[ROOKS + my_offset][rook_start];
+            self.zobrist_key ^= zobrist.piece_keys[ROOKS + my_offset][rook_target];
+
             let rook_mask = (1u64 << rook_start) | (1u64 << rook_target);
             self.bitboards_of_pieces[ROOKS] ^= rook_mask;
-
             if self.is_white_turn() 
-            {
-                self.bitboards_of_pieces[WHITE_PIECES] ^= rook_mask;
+            { 
+                self.bitboards_of_pieces[WHITE_PIECES] ^= rook_mask; 
             } 
             else 
-            {
-                self.bitboards_of_pieces[BLACK_PIECES] ^= rook_mask;
+            { 
+                self.bitboards_of_pieces[BLACK_PIECES] ^= rook_mask; 
             }
 
             self.array_of_pieces[rook_start] = EMPTY_SQUARE;
             self.array_of_pieces[rook_target] = ROOKS as u8;
+            self.incremental_eval -= Self::get_piece_value_pst(ROOKS, rook_start, is_white);
+            self.incremental_eval += Self::get_piece_value_pst(ROOKS, rook_target, is_white);
         }
 
         self.turn_end();
+        self.zobrist_key ^= zobrist.side_to_move;
     }
 
     pub fn unmake_move(&mut self, move_data: &Move)
@@ -204,6 +276,9 @@ impl Board
         {
             self.castling_rights = previous_state.castling_rights;
             self.en_passant_target = previous_state.en_passant_target;
+            self.zobrist_key = previous_state.zobrist_key;
+            self.incremental_eval = previous_state.incremental_eval; 
+            self.phase_weight = previous_state.phase_weight;
         }
 
         let flag = move_data.get_flags();
@@ -278,6 +353,43 @@ impl Board
         }
     }
 
+    pub fn make_null_move(&mut self, zobrist: &Zobrist) 
+    {
+        self.history.push(GameState 
+        {
+            castling_rights: self.castling_rights,
+            en_passant_target: self.en_passant_target,
+            zobrist_key: self.zobrist_key,
+            incremental_eval: self.incremental_eval, 
+            phase_weight: self.phase_weight,
+        });
+
+        if self.en_passant_target != 0 
+        {
+            let file = self.en_passant_target.trailing_zeros() as usize % 8;
+            self.zobrist_key ^= zobrist.en_passant_keys[file];
+            self.en_passant_target = 0;
+        }
+
+        self.turn_end();
+        self.zobrist_key ^= zobrist.side_to_move;
+    }
+
+    pub fn unmake_null_move(&mut self) 
+    {
+        self.turn_end();
+        
+        // Restores Everything
+        if let Some(previous_state) = self.history.pop() 
+        {
+            self.castling_rights = previous_state.castling_rights;
+            self.en_passant_target = previous_state.en_passant_target;
+            self.zobrist_key = previous_state.zobrist_key;
+            self.incremental_eval = previous_state.incremental_eval; 
+            self.phase_weight = previous_state.phase_weight;
+        }
+    }
+
     pub fn is_white_turn(&self) -> bool
     {
         self.white_to_move
@@ -326,10 +438,73 @@ impl Board
         self.castling_rights &= constants::CASTLING_RIGHTS_UPDATE_TABLE[move_data.get_start() as usize];
         self.castling_rights &= constants::CASTLING_RIGHTS_UPDATE_TABLE[move_data.get_target() as usize];
     }
+
+    pub fn get_piece_value_pst(piece: usize, sq: usize, is_white: bool) -> i32 
+    {
+        let sq_idx = if is_white { sq } else { sq ^ 56 };
+        let val = match piece 
+        {
+            PAWNS => PAWN_VALUE + PAWN_PST[sq_idx],
+            KNIGHTS => KNIGHT_VALUE + KNIGHT_PST[sq_idx],
+            BISHOPS => BISHOP_VALUE + BISHOP_PST[sq_idx],
+            ROOKS => ROOK_VALUE + ROOK_PST[sq_idx],
+            QUEENS => QUEEN_VALUE + QUEEN_PST[sq_idx],
+            _ => 0,
+        };
+        if is_white { val } else { -val }
+    }
+
+    pub fn get_piece_phase(piece: usize) -> i32 
+    {
+        match piece 
+        {
+            KNIGHTS | BISHOPS => 1,
+            ROOKS => 2,
+            QUEENS => 4,
+            _ => 0,
+        }
+    }
+
+    pub fn generate_zobrist_key(&self, zobrist: &Zobrist) -> u64 
+    {
+        let mut final_key = 0;
+        
+        // Hash the pieces
+        for square in 0..64 
+        {
+            let piece = self.array_of_pieces[square] as usize;
+            if piece != EMPTY_SQUARE as usize 
+            {
+                let color_offset = if (self.get_bitboard(WHITE_PIECES) & (1u64 << square)) != 0 { 0 } else { 6 };
+                final_key ^= zobrist.piece_keys[piece + color_offset][square];
+            }
+        }
+
+        // Hash castling rights (0 to 15)
+        final_key ^= zobrist.castling_keys[self.castling_rights as usize];
+
+        // Hash En Passant target (if any)
+        if self.en_passant_target != 0 
+        {
+            let file = self.en_passant_target.trailing_zeros() as usize % 8;
+            final_key ^= zobrist.en_passant_keys[file];
+        }
+
+        // Hash Side to Move
+        if !self.white_to_move 
+        {
+            final_key ^= zobrist.side_to_move;
+        }
+
+        final_key
+    }
 }
 
 pub struct GameState 
 {
     pub castling_rights: u8,
     pub en_passant_target: u64,
+    pub zobrist_key: u64,
+    pub incremental_eval: i32,
+    pub phase_weight: i32,
 }
