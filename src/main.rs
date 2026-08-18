@@ -19,21 +19,21 @@ use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask}, moveg
 // python lichess-bot.py
 fn main() 
 {
-    // uci::uci_loop();
-    let magic_bitboards = MagicBitBoards::new();
-    let zobrist = Zobrist::new(); 
-    let mut board = Board::new(&zobrist);
+    uci::uci_loop();
+    // let magic_bitboards = MagicBitBoards::new();
+    // let zobrist = Zobrist::new(); 
+    // let mut board = Board::new(&zobrist);
 
-    println!("Engine is thinking...");
-    let time_limit = 4000;   
+    // println!("Engine is thinking...");
+    // let time_limit = 4000;   
 
-    println!("Engine is thinking for {} seconds...", time_limit as f64 / 1000.0);
+    // println!("Engine is thinking for {} seconds...", time_limit as f64 / 1000.0);
 
-    let mut tt = TranspositionTable::new(4_194_304);
-    let best_move = search::get_best_move(&mut board, time_limit, &magic_bitboards, &zobrist, &mut tt);
-    let move_string = perft::get_algebraic_move(&best_move);
+    // let mut tt = TranspositionTable::new(4_194_304);
+    // let best_move = search::get_best_move(&mut board, time_limit, &magic_bitboards, &zobrist, &mut tt);
+    // let move_string = perft::get_algebraic_move(&best_move);
     
-    println!("Best move found: {}", move_string);
+    // println!("Best move found: {}", move_string);
 
-    // perft::perft_divide(&mut board, &magic_bitboards, 7, &zobrist);
+    // perft::perft_divide(&mut board, &magic_bitboards, 5, &zobrist);
 }

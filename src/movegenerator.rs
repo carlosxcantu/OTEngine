@@ -728,6 +728,128 @@ pub fn is_move_legal(board: &mut Board, magic_bitboards: &MagicBitBoards) -> boo
     !is_in_check
 }
 
+// Static Exchange Evaluation. Simulates the full sequence of captures on
+// `target_square`, assuming both sides always recapture with their least
+// valuable attacker, and returns the net material result for the side
+// initiating the capture (the side to move when this is called). A negative
+// result means the initiating capture is a material-losing trade even after
+// all recaptures are accounted for.
+//
+// This ignores absolute pins for speed (standard simplification used by
+// essentially all engines that implement SEE) — a very rare inaccuracy
+// compared to the search-depth gains from pruning bad captures.
+pub fn static_exchange_evaluation(board: &Board, target_square: usize, from_square: usize, attacking_piece: usize, magic_bitboards: &MagicBitBoards) -> i32
+{
+    let mut gain = [0i32; 32];
+    let mut depth = 0usize;
+    let mut occupancy = board.get_bitboard(board::WHITE_PIECES) | board.get_bitboard(board::BLACK_PIECES);
+    let mut side_is_white = board.is_white_turn();
+    let mut current_attacker_piece = attacking_piece;
+
+    gain[0] = PIECE_VALUES[board.get_piece_from_array(target_square as u32) as usize];
+    occupancy &= !(1u64 << from_square);
+
+    loop
+    {
+        depth += 1;
+        gain[depth] = PIECE_VALUES[current_attacker_piece] - gain[depth - 1];
+
+        // If neither side can improve their position further, stop early.
+        if gain[depth].max(-gain[depth - 1]) < 0 
+        { 
+            break; 
+        }
+
+        side_is_white = !side_is_white;
+
+        match least_valuable_attacker(board, target_square, occupancy, side_is_white, magic_bitboards)
+        {
+            Some((attacker_square, piece)) =>
+            {
+                occupancy &= !(1u64 << attacker_square);
+                current_attacker_piece = piece;
+            }
+            None => break,
+        }
+
+        if depth >= 31 
+        { 
+            break; 
+        }
+    }
+
+    while depth > 0
+    {
+        gain[depth - 1] = -(-gain[depth - 1]).max(gain[depth]);
+        depth -= 1;
+    }
+
+    gain[0]
+}
+
+fn least_valuable_attacker(board: &Board, target_square: usize, occupancy: u64, white_attacker: bool, magic_bitboards: &MagicBitBoards) -> Option<(usize, usize)>
+{
+    let color_bb = (if white_attacker { board.get_bitboard(board::WHITE_PIECES) } else { board.get_bitboard(board::BLACK_PIECES) }) & occupancy;
+
+    // Pawns
+    let pawns = board.get_bitboard(board::PAWNS) & color_bb;
+    let mut pawn_attackers = 0u64;
+    if white_attacker
+    {
+        if target_square % 8 != 0 && target_square >= 9 { pawn_attackers |= 1u64 << (target_square - 9); }
+        if target_square % 8 != 7 && target_square >= 7 { pawn_attackers |= 1u64 << (target_square - 7); }
+    }
+    else
+    {
+        if target_square % 8 != 7 && target_square + 9 < 64 { pawn_attackers |= 1u64 << (target_square + 9); }
+        if target_square % 8 != 0 && target_square + 7 < 64 { pawn_attackers |= 1u64 << (target_square + 7); }
+    }
+    pawn_attackers &= pawns;
+    if pawn_attackers != 0 
+    { 
+        return Some((pawn_attackers.trailing_zeros() as usize, board::PAWNS)); 
+    }
+
+    // Knights
+    let knights = board.get_bitboard(board::KNIGHTS) & color_bb & KNIGHT_ATTACK_MAP[target_square];
+    if knights != 0 
+    { 
+        return Some((knights.trailing_zeros() as usize, board::KNIGHTS)); 
+    }
+
+    // Bishops (recomputed against current shrinking occupancy so x-ray attacks are found)
+    let bishop_attacks = magic_bitboards.get_bishop_attacks(target_square, occupancy);
+    let bishops = board.get_bitboard(board::BISHOPS) & color_bb & bishop_attacks;
+    if bishops != 0 
+    { 
+        return Some((bishops.trailing_zeros() as usize, board::BISHOPS)); 
+    }
+
+    // Rooks
+    let rook_attacks = magic_bitboards.get_rook_attacks(target_square, occupancy);
+    let rooks = board.get_bitboard(board::ROOKS) & color_bb & rook_attacks;
+    if rooks != 0 
+    { 
+        return Some((rooks.trailing_zeros() as usize, board::ROOKS)); 
+    }
+
+    // Queens
+    let queens = board.get_bitboard(board::QUEENS) & color_bb & (bishop_attacks | rook_attacks);
+    if queens != 0 
+    { 
+        return Some((queens.trailing_zeros() as usize, board::QUEENS)); 
+    }
+
+    // King
+    let king = board.get_bitboard(board::KINGS) & color_bb & KING_ATTACK_MAP[target_square];
+    if king != 0 
+    { 
+        return Some((king.trailing_zeros() as usize, board::KINGS)); 
+    }
+
+    None
+}
+
 pub struct MoveList
 {
     move_list : [MaybeUninit<Move>; 256],
@@ -779,6 +901,32 @@ impl MoveList
     {
         self.get_move(self.order[index])
     }
+
+    // pub fn pick_move(&mut self, start_index: usize) -> Move 
+    // {
+    //     let mut best_score = -99999;
+    //     let mut best_index = start_index;
+
+    //     // Find the highest score from start_index to the end
+    //     for i in start_index..self.count 
+    //     {
+    //         if self.scores[i] > best_score 
+    //         {
+    //             best_score = self.scores[i];
+    //             best_index = i;
+    //         }
+    //     }
+
+    //     // Swap both the move AND its score to the current position
+    //     let temp_move = self.get_move(start_index);
+    //     let best_move = self.get_move(best_index);
+        
+    //     self.move_list[start_index].write(best_move);
+    //     self.move_list[best_index].write(temp_move);
+    //     self.scores.swap(start_index, best_index);
+
+    //     best_move
+    // }
 
     fn score_move(&self, board: &Board, move_data: &Move, tt_move: Option<Move>, killer_1: Option<Move>, killer_2: Option<Move>, history: &[[i32; 64]; 12]) -> i32 
     {

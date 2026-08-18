@@ -35,6 +35,7 @@ pub struct Board
     pub zobrist_key: u64,
     pub incremental_eval: i32, // NEW
     pub phase_weight: i32,
+    pub halfmove_clock: u32, // NEW: plies since last capture or pawn move
 }
 
 impl Board
@@ -95,6 +96,7 @@ impl Board
             zobrist_key: 0,
             incremental_eval: 0, 
             phase_weight: 0,
+            halfmove_clock: 0,
         };
 
         new_board.init_eval();
@@ -127,6 +129,7 @@ impl Board
             zobrist_key: self.zobrist_key,
             incremental_eval: self.incremental_eval, 
             phase_weight: self.phase_weight,
+            halfmove_clock: self.halfmove_clock,
         });
 
         // Hash OUT the old Castling Rights and En Passant file
@@ -153,8 +156,9 @@ impl Board
         let start_square = move_data.get_start() as usize;
         let piece = move_data.get_piece();
         let flag = move_data.get_flags();
+        let is_capture = self.array_of_pieces[target_square] != EMPTY_SQUARE;
 
-        if self.array_of_pieces[target_square] != EMPTY_SQUARE
+        if is_capture
         {
             let captured_piece = self.array_of_pieces[target_square] as usize;
             self.zobrist_key ^= zobrist.piece_keys[captured_piece + enemy_offset][target_square];
@@ -264,6 +268,16 @@ impl Board
             self.incremental_eval += Self::get_piece_value_pst(ROOKS, rook_target, is_white);
         }
 
+        // Fifty-move / repetition clock: resets on any capture or pawn move (irreversible)
+        if is_capture || piece == PAWNS as usize
+        {
+            self.halfmove_clock = 0;
+        }
+        else
+        {
+            self.halfmove_clock += 1;
+        }
+
         self.turn_end();
         self.zobrist_key ^= zobrist.side_to_move;
     }
@@ -279,6 +293,7 @@ impl Board
             self.zobrist_key = previous_state.zobrist_key;
             self.incremental_eval = previous_state.incremental_eval; 
             self.phase_weight = previous_state.phase_weight;
+            self.halfmove_clock = previous_state.halfmove_clock;
         }
 
         let flag = move_data.get_flags();
@@ -362,6 +377,7 @@ impl Board
             zobrist_key: self.zobrist_key,
             incremental_eval: self.incremental_eval, 
             phase_weight: self.phase_weight,
+            halfmove_clock: self.halfmove_clock,
         });
 
         if self.en_passant_target != 0 
@@ -387,7 +403,39 @@ impl Board
             self.zobrist_key = previous_state.zobrist_key;
             self.incremental_eval = previous_state.incremental_eval; 
             self.phase_weight = previous_state.phase_weight;
+            self.halfmove_clock = previous_state.halfmove_clock;
         }
+    }
+
+    // Returns true if the current position's zobrist key has occurred earlier
+    // within the current run of reversible moves (i.e. since the last capture
+    // or pawn move). One repeated occurrence is treated as a draw for search
+    // purposes — this is the standard, conservative approach engines use to
+    // avoid the graph-history-interaction problem with the TT.
+    pub fn is_repetition(&self) -> bool
+    {
+        let limit = self.halfmove_clock as usize;
+        let len = self.history.len();
+        if limit == 0 || len == 0 
+        { 
+            return false; 
+        }
+
+        let start = if len > limit { len - limit } else { 0 };
+
+        for i in (start..len).rev()
+        {
+            if self.history[i].zobrist_key == self.zobrist_key 
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn is_fifty_move_draw(&self) -> bool
+    {
+        self.halfmove_clock >= 100
     }
 
     pub fn is_white_turn(&self) -> bool
@@ -507,4 +555,5 @@ pub struct GameState
     pub zobrist_key: u64,
     pub incremental_eval: i32,
     pub phase_weight: i32,
+    pub halfmove_clock: u32,
 }

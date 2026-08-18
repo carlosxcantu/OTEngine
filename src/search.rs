@@ -1,9 +1,10 @@
 use std::cmp::max;
 use std::time::{Instant, Duration};
+use crate::constants::PIECE_VALUES;
 use crate::movegenerator::generate_tactical_moves;
 use crate::transposition::{NodeType, TranspositionTable};
 use crate::zobrist::{self, Zobrist};
-use crate::{board::{self, Board}, evaluation::evaluation_board, magics::MagicBitBoards, movedata::Move, movegenerator::{MoveList, generate_psuedo_legal_moves, is_move_legal, is_square_attacked}};
+use crate::{board::{self, Board}, evaluation::evaluation_board, magics::MagicBitBoards, movedata::Move, movegenerator::{MoveList, generate_psuedo_legal_moves, is_move_legal, is_square_attacked, static_exchange_evaluation}};
 
 const MAX_SCORE: i32 = 50000;
 const MIN_SCORE: i32 = -50000;
@@ -123,6 +124,14 @@ pub fn minimax(board: &mut Board, depth: u8, mut alpha: i32, beta: i32, magic_bi
     if depth == 0
     {   
         return quiescence_search(board, alpha, beta, magic_bitboards, info, zobrist, ply);
+    }
+
+    // Draw detection: must happen before the TT probe. A repeated or 50-move
+    // position is a draw regardless of what an earlier search path stored in
+    // the TT for this zobrist key (graph-history-interaction safety).
+    if ply > 0 && (board.is_repetition() || board.is_fifty_move_draw())
+    {
+        return 0;
     }
 
     let mut tt_move: Option<Move> = None;
@@ -328,9 +337,10 @@ fn quiescence_search(board: &mut Board, mut alpha: i32, beta: i32, magic_bitboar
     if info.stopped { return 0; }
 
     let in_check = is_current_player_in_check(board, magic_bitboards);
+    let mut pat: i32 = 0;
     if !in_check
     {
-        let pat: i32 = evaluation_board(board, magic_bitboards);
+        pat = evaluation_board(board, magic_bitboards);
         if pat >= beta { return beta; }
         if pat > alpha { alpha = pat; }
     }
@@ -349,10 +359,38 @@ fn quiescence_search(board: &mut Board, mut alpha: i32, beta: i32, magic_bitboar
     
     move_list.score_moves(board, None, None, None, &info.history_moves);
     let mut legal_moves = 0;
+    const DELTA_MARGIN: i32 = 200;
 
     for i in 0..move_list.get_count() 
     {
         let the_move = move_list.pick_move(i);
+
+        // Pruning only applies to quiet-search captures when not in check —
+        // when in check we must consider every evasion, no matter how it scores.
+        if !in_check
+        {
+            let captured = the_move.get_captured_piece();
+            let is_capture = captured != board::EMPTY_SQUARE as usize;
+            let is_promotion = the_move.get_flags() >= board::FLAG_PROMOTE_QUEEN && the_move.get_flags() <= board::FLAG_PROMOTE_KNIGHT;
+            let is_en_passant = the_move.get_flags() == board::FLAG_EN_PASSANT;
+
+            if is_capture && !is_promotion && !is_en_passant
+            {
+                // Delta pruning: even winning the captured piece outright can't reach alpha.
+                if pat + PIECE_VALUES[captured] + DELTA_MARGIN < alpha
+                {
+                    continue;
+                }
+
+                // SEE pruning: skip captures that are a losing trade after all recaptures.
+                let see_score = static_exchange_evaluation(board, the_move.get_target() as usize, the_move.get_start() as usize, the_move.get_piece(), magic_bitboards);
+                if see_score < 0
+                {
+                    continue;
+                }
+            }
+        }
+
         board.make_move(&the_move, zobrist);
 
         if is_move_legal(board, magic_bitboards) 
