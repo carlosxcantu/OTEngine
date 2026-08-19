@@ -18,7 +18,16 @@ pub fn get_best_move(board: &mut Board, time_limit_ms: u64, magic_bitboards: &Ma
     {
         let current_best_move = search_root(board, current_depth, magic_bitboards, &mut info, zobrist, tt);
 
-        if info.stopped || Instant::now() >= info.end_time
+        #[cfg(target_arch = "wasm32")]
+        let now_ms = js_sys::Date::now();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as f64;
+
+        if info.stopped || now_ms >= info.end_time
         {
             break;
         }
@@ -423,7 +432,7 @@ fn quiescence_search(board: &mut Board, mut alpha: i32, beta: i32, magic_bitboar
 
 pub struct SearchInfo 
 {
-    pub end_time: Instant,
+    pub end_time: f64,
     pub stopped: bool,
     pub nodes: u64,
     pub killer_moves: [[Move; 100]; 2],
@@ -434,9 +443,18 @@ impl SearchInfo
 {
     pub fn new(time_limit_ms: u64) -> Self 
     {
+        #[cfg(target_arch = "wasm32")]
+        let now_ms = js_sys::Date::now();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as f64;
+
         SearchInfo 
         {
-            end_time: Instant::now() + Duration::from_millis(time_limit_ms),
+            end_time: now_ms + (time_limit_ms as f64),
             stopped: false,
             nodes: 0,
             killer_moves: [[Move::new(0, 0, 0, 0, 0); 100]; 2],
@@ -446,9 +464,21 @@ impl SearchInfo
 
     pub fn check_time(&mut self) 
     {
-        if self.nodes % 2048 == 0 && Instant::now() >= self.end_time 
+        if self.nodes % 2048 == 0 
         {
-            self.stopped = true;
+            #[cfg(target_arch = "wasm32")]
+            let now_ms = js_sys::Date::now();
+
+            #[cfg(not(target_arch = "wasm32"))]
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as f64;
+
+            if now_ms >= self.end_time 
+            {
+                self.stopped = true;
+            }
         }
     }
 }

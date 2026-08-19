@@ -143,7 +143,7 @@ pub fn uci_loop()
     }
 }
 
-fn parse_uci_move(move_str: &str, board: &mut Board, magic_bitboards: &MagicBitBoards, zobrist: &Zobrist) -> Option<Move> 
+pub fn parse_uci_move(move_str: &str, board: &mut Board, magic_bitboards: &MagicBitBoards, zobrist: &Zobrist) -> Option<Move> 
 {
     let mut move_list = MoveList::new();
     generate_psuedo_legal_moves(board, &mut move_list, magic_bitboards);

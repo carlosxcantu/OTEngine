@@ -1,16 +1,18 @@
-mod board;
-mod movedata;
-mod movegenerator;
-mod constants;
-mod magics;
-mod perft;
-mod evaluation;
-mod search;
-mod zobrist;
-mod transposition;
-mod uci;
+use OTEngine::uci;
+
+// mod board;
+// mod movedata;
+// mod movegenerator;
+// mod constants;
+// mod magics;
+// mod perft;
+// mod evaluation;
+// mod search;
+// mod zobrist;
+// mod transposition;
+// mod uci;
 //lip_RpwV1s8lu5pGXzfnbSPE
-use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask}, movegenerator::{MoveList, generate_psuedo_legal_moves}, zobrist::Zobrist, transposition::TranspositionTable};
+// use crate::{board::Board, magics::{MagicBitBoards, calculate_bishop_mask}, movegenerator::{MoveList, generate_psuedo_legal_moves}, zobrist::Zobrist, transposition::TranspositionTable};
 
 // Python Script - 
 // cd C:\Users\carlo\Desktop\Rust_Personal\OTEngine

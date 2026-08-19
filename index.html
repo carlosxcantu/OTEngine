@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>OT Engine</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --panel-hover: #2d2d2d;
+            --text-main: #e0e0e0;
+            --accent: #4caf50;
+            --danger: #e53935;
+            --border-radius: 8px;
+        }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px 10px;
+        }
+
+        h1 { margin-top: 0; margin-bottom: 15px; color: #fff; letter-spacing: 1px; text-align: center;}
+        
+        .layout-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            width: 100%;
+            max-width: 800px;
+            justify-content: center;
+        }
+
+        .game-wrapper {
+            background-color: var(--panel-bg);
+            padding: 15px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+
+        .sidebar {
+            background-color: var(--panel-bg);
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 250px;
+            box-sizing: border-box;
+        }
+        
+        @media (max-width: 768px) {
+            .layout-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .sidebar {
+                width: 100%;
+                max-width: 500px;
+            }
+        }
+        
+        .player-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 0 5px;
+        }
+        
+        .clock {
+            background: #2a2a2a;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #fff;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        #board { 
+            width: 100%; 
+            touch-action: none; 
+        }
+        
+        select, button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            min-height: 44px;
+        }
+        select:hover, button:hover { background: var(--panel-hover); border-color: #666; }
+        button.primary { background: var(--accent); border-color: var(--accent); font-weight: bold;}
+        button.primary:hover { background: #45a049; }
+        
+        .btn-group { display: flex; gap: 10px; }
+        
+        button.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+        button.danger:hover { background: rgba(229, 57, 53, 0.1); }
+
+        .history-controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .history-controls button { padding: 10px; font-weight: bold; background: #2a2a2a; border: none; }
+        .history-controls button:hover { background: #444; }
+
+        #status-bar {
+            text-align: center;
+            font-weight: bold;
+            color: var(--accent);
+            margin-top: 5px;
+            min-height: 24px;
+        }
+
+        .highlight-move { position: relative; }
+        .highlight-move::after {
+            content: '';
+            position: absolute;
+            width: 32%;
+            height: 32%;
+            background-color: rgba(0, 0, 0, 0.35);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        .in-check {
+            background: radial-gradient(ellipse at center, rgba(229, 57, 53, 0.9) 0%, rgba(229, 57, 53, 0) 70%) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>OT Engine</h1>
+    
+    <div class="layout-container">
+        <div class="game-wrapper">
+            <div class="player-panel">
+                <span id="top-name">OT Engine</span>
+                <span class="clock" id="top-clock">05:00</span>
+            </div>
+            
+            <div id="board"></div>
+            
+            <div class="player-panel">
+                <span id="bottom-name">Player</span>
+                <span class="clock" id="bottom-clock">05:00</span>
+            </div>
+            
+            <div class="history-controls">
+                <button id="btn-start">|&lt;</button>
+                <button id="btn-prev">&lt;</button>
+                <button id="btn-next">&gt;</button>
+                <button id="btn-end">&gt;|</button>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div id="status-bar">Waiting to start...</div>
+            <hr style="width: 100%; border-color: #333;">
+            
+            <select id="time-control">
+                <option value="180,2">Blitz 3|2</option>
+                <option value="300,0" selected>Blitz 5|0</option>
+                <option value="600,0">Rapid 10|0</option>
+            </select>
+
+            <select id="think-speed">
+                <option value="60">Fast Thinking</option>
+                <option value="30" selected>Deep Thinking</option>
+            </select>
+
+            <select id="player-color">
+                <option value="w">Play White</option>
+                <option value="b">Play Black</option>
+            </select>
+            <button id="start-btn" class="primary">Start Game</button>
+            
+            <div class="btn-group">
+                <button id="btn-draw">½ Draw</button>
+                <button id="btn-resign" class="danger">⚑ Resign</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+    <script type="module">
+        let worker;
+        let game = new Chess();
+        let board = null;
+        let playerColor = 'w';
+        
+        let moveHistory = []; 
+        let currentPly = 0;   
+        let isGameActive = false;
+        let selectedSquare = null;
+        
+        let wtime = 300000;
+        let btime = 300000;
+        let winc = 0;
+        let binc = 0;
+        let timerInterval = null;
+        let lastTime = Date.now();
+
+        function setup() {
+            worker = new Worker('worker.js', { type: 'module' });
+            
+            worker.onmessage = function(e) {
+                const data = e.data;
+                if (data.type === 'ready') {
+                    document.getElementById('status-bar').innerText = "Engine Loaded!";
+                } 
+                else if (data.type === 'bestmove') {
+                    if (!isGameActive) return; 
+
+                    const bestMove = data.move;
+                    if (bestMove) {
+                        const verboseMove = game.move({ 
+                            from: bestMove.substring(0, 2), 
+                            to: bestMove.substring(2, 4), 
+                            promotion: bestMove.length === 5 ? bestMove[4] : undefined 
+                        });
+                        
+                        moveHistory.push(verboseMove);
+                        currentPly++;
+                        
+                        if (playerColor === 'w') { btime += binc; } else { wtime += winc; }
+                        lastTime = Date.now(); 
+                        
+                        syncBoard();
+                        updateStatus();
+                    }
+                }
+            };
+
+            board = Chessboard('board', {
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd
+            });
+            
+            $(window).resize(board.resize);
+
+            document.getElementById('start-btn').addEventListener('click', startNewGame);
+            document.getElementById('btn-resign').addEventListener('click', () => endGame("Player Resigned. OT Engine Wins."));
+            document.getElementById('btn-draw').addEventListener('click', () => endGame("Draw agreed."));
+            
+            document.getElementById('btn-start').addEventListener('click', () => navigateHistory(0));
+            document.getElementById('btn-prev').addEventListener('click', () => navigateHistory(currentPly - 1));
+            document.getElementById('btn-next').addEventListener('click', () => navigateHistory(currentPly + 1));
+            document.getElementById('btn-end').addEventListener('click', () => navigateHistory(moveHistory.length));
+            
+            renderClocks();
+
+            $('#board').on('click', '.square-55d63', function() {
+                if (!isGameActive || currentPly !== moveHistory.length) return;
+
+                const square = $(this).attr('data-square');
+                const piece = game.get(square);
+
+                if (selectedSquare && $(this).hasClass('highlight-move')) {
+                    const move = game.move({ from: selectedSquare, to: square, promotion: 'q' });
+                    if (move) {
+                        moveHistory.push(move);
+                        currentPly++;
+                        if (playerColor === 'w') { wtime += winc; } else { btime += binc; }
+
+                        removeHighlights();
+                        selectedSquare = null;
+                        syncBoard();
+                        updateStatus();
+                        setTimeout(triggerEngineMove, 50);
+                        return;
+                    }
+                }
+
+                if (piece && piece.color === playerColor) {
+                    selectedSquare = square;
+                    removeHighlights();
+                    showLegalMoves(square);
+                } else {
+                    selectedSquare = null;
+                    removeHighlights();
+                }
+            });
+        }
+
+        function startNewGame() {
+            game.reset();
+            moveHistory = [];
+            currentPly = 0;
+            selectedSquare = null;
+            removeHighlights();
+            removeCheckHighlight();
+            worker.postMessage({ type: 'newgame' });
+            
+            playerColor = document.getElementById('player-color').value;
+            const [baseSecs, incSecs] = document.getElementById('time-control').value.split(',');
+            
+            wtime = parseInt(baseSecs) * 1000;
+            btime = parseInt(baseSecs) * 1000;
+            winc = parseInt(incSecs) * 1000;
+            binc = parseInt(incSecs) * 1000;
+            
+            board.position('start');
+            board.orientation(playerColor === 'w' ? 'white' : 'black');
+            
+            document.getElementById('top-name').innerText = playerColor === 'w' ? "OT Engine (Black)" : "OT Engine (White)";
+            document.getElementById('bottom-name').innerText = playerColor === 'w' ? "Player (White)" : "Player (Black)";
+            
+            isGameActive = true;
+            lastTime = Date.now();
+            clearInterval(timerInterval);
+            timerInterval = setInterval(updateClocks, 100);
+            renderClocks();
+            updateStatus();
+
+            if (playerColor === 'b') {
+                setTimeout(triggerEngineMove, 50);
+            }
+        }
+
+        function endGame(reason) {
+            if (!isGameActive) return;
+            isGameActive = false;
+            document.getElementById('status-bar').innerText = reason;
+        }
+
+        function removeHighlights() {
+            $('#board .square-55d63').removeClass('highlight-move');
+        }
+
+        function showLegalMoves(square) {
+            if (!isGameActive || currentPly !== moveHistory.length) return;
+            
+            let moves = game.moves({ square: square, verbose: true });
+            if (moves.length === 0) return;
+            
+            moves.forEach(m => {
+                $('#board .square-' + m.to).addClass('highlight-move');
+            });
+        }
+
+        function removeCheckHighlight() {
+            $('#board .square-55d63').removeClass('in-check');
+        }
+
+        function applyCheckHighlight(targetGame) {
+            removeCheckHighlight();
+            if (targetGame.in_check()) {
+                const turn = targetGame.turn();
+                const pieces = targetGame.board(); 
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (pieces[r][c] && pieces[r][c].type === 'k' && pieces[r][c].color === turn) {
+                            const file = String.fromCharCode(97 + c);
+                            const rank = 8 - r;
+                            $('#board .square-' + file + rank).addClass('in-check');
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        function onDragStart(source, piece) {
+            if (!isGameActive || game.game_over() || piece.charAt(0) !== playerColor) return false;
+            
+            if (currentPly !== moveHistory.length) {
+                navigateHistory(moveHistory.length);
+            }
+            selectedSquare = source;
+            removeHighlights();
+            showLegalMoves(source);
+        }
+
+        function onDrop(source, target) {
+            removeHighlights();
+            selectedSquare = null;
+
+            const move = game.move({ from: source, to: target, promotion: 'q' });
+            if (move === null) return 'snapback';
+
+            moveHistory.push(move);
+            currentPly++;
+
+            if (playerColor === 'w') { wtime += winc; } else { btime += binc; }
+            
+            updateStatus();
+            setTimeout(triggerEngineMove, 50);
+        }
+
+        function onSnapEnd() {
+            syncBoard();
+        }
+
+        function navigateHistory(ply) {
+            if (ply < 0 || ply > moveHistory.length) return;
+            currentPly = ply;
+            selectedSquare = null;
+            removeHighlights();
+            
+            let tempGame = new Chess();
+            for (let i = 0; i < currentPly; i++) {
+                tempGame.move(moveHistory[i]);
+            }
+            
+            board.position(tempGame.fen(), false); 
+            applyCheckHighlight(tempGame);
+        }
+
+        function syncBoard() {
+            board.position(game.fen());
+            applyCheckHighlight(game);
+        }
+
+        function triggerEngineMove() {
+            if (!isGameActive || game.game_over()) return;
+            document.getElementById('status-bar').innerText = "OT Engine is thinking...";
+
+            const uciHistory = moveHistory.map(m => m.from + m.to + (m.promotion ? m.promotion : '')).join(' ');
+            const thinkSpeed = document.getElementById('think-speed').value;
+
+            worker.postMessage({
+                type: 'search',
+                history: uciHistory,
+                wtime: wtime,
+                btime: btime,
+                winc: winc,
+                binc: binc,
+                speed: thinkSpeed
+            });
+        }
+
+        function updateStatus() {
+            if (game.in_checkmate()) {
+                endGame("Checkmate!");
+            } else if (game.in_draw()) {
+                endGame("Game Drawn.");
+            } else {
+                const isPlayerTurn = game.turn() === playerColor;
+                document.getElementById('status-bar').innerText = isPlayerTurn ? "Your turn" : "OT Engine is thinking...";
+            }
+        }
+
+        function updateClocks() {
+            if (!isGameActive || game.game_over()) return;
+            const now = Date.now();
+            const delta = now - lastTime;
+            lastTime = now;
+
+            if (game.turn() === 'w') { wtime -= delta; } else { btime -= delta; }
+            renderClocks();
+
+            if (wtime <= 0 || btime <= 0) {
+                endGame("Timeout!");
+            }
+        }
+
+        function renderClocks() {
+            const format = (ms) => {
+                let totalSecs = Math.max(0, Math.floor(ms / 1000));
+                let m = Math.floor(totalSecs / 60).toString().padStart(2, '0');
+                let s = (totalSecs % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            };
+            
+            if (playerColor === 'w') {
+                document.getElementById('bottom-clock').innerText = format(wtime);
+                document.getElementById('top-clock').innerText = format(btime);
+            } else {
+                document.getElementById('bottom-clock').innerText = format(btime);
+                document.getElementById('top-clock').innerText = format(wtime);
+            }
+        }
+
+        setup();
+    </script>
+</body>
+</html>
